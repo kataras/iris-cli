@@ -3,11 +3,9 @@ package project
 import (
 	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,33 +42,7 @@ func (p *Project) Install() error {
 
 func (p *Project) download() ([]byte, error) {
 	zipURL := fmt.Sprintf("https://%s/archive/%s.zip", p.Repo, p.Branch)
-	req, err := http.NewRequest(http.MethodGet, zipURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Accept-Encoding", "gzip")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// println(resp.Header.Get("Content-Length"))
-	// println(resp.ContentLength)
-
-	var reader io.Reader = resp.Body
-
-	if strings.Contains(resp.Header.Get("Content-Encoding"), "gzip") {
-		gzipReader, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		defer gzipReader.Close()
-		reader = gzipReader
-	}
-
-	return ioutil.ReadAll(reader)
+	return utils.Download(zipURL, nil)
 }
 
 func (p *Project) unzip(body []byte) error {
