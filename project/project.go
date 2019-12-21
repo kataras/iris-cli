@@ -14,6 +14,7 @@ import (
 )
 
 type Project struct {
+	Name string `json:"name,omitempty" yaml:"Name" toml:"Name"` // e.g. starter-kit
 	// Remote.
 	Repo   string `json:"repo" yaml:"Repo" toml:"Repo"`                 // e.g. "github.com/iris-contrib/project1"
 	Branch string `json:"branch,omitempty" yaml:"Branch" toml:"Branch"` // if empty then set to "master"
@@ -25,6 +26,7 @@ type Project struct {
 func New(dest, repo string) *Project {
 	repoBranch := strings.Split(repo, "@") // i.e. github.com/author/project@v12
 	p := &Project{
+		Name:   "",
 		Repo:   repoBranch[0],
 		Branch: "master",
 		Dest:   dest,

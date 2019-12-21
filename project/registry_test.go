@@ -8,10 +8,10 @@ import (
 
 func TestRemoteRegistryLoad(t *testing.T) {
 	var (
-		expected = &Registry{Projects: []*Project{
-			{Repo: "github.com/kataras/iris"},
-			{Repo: "github.com/kataras/neffos"},
-			{Repo: "github.com/kataras/neffos.js"},
+		expected = &Registry{Projects: map[string]*Project{
+			"iris":      {Repo: "github.com/kataras/iris"},
+			"neffos":    {Repo: "github.com/kataras/neffos"},
+			"neffos.js": {Repo: "github.com/kataras/neffos.js"},
 		}}
 
 		tests = []func(*Registry) *Registry{
@@ -29,9 +29,9 @@ func TestRemoteRegistryLoad(t *testing.T) {
 			t.Fatalf("expected length of projects: %d but got %d", expected, got)
 		}
 
-		for i := range reg.Projects {
-			if expected, got := expected.Projects[i], reg.Projects[i]; !reflect.DeepEqual(expected, got) {
-				t.Fatalf("project failed to load: expected:\n%#+v\nbut got\n%#+v", expected, got)
+		for name := range reg.Projects {
+			if expected, got := expected.Projects[name], reg.Projects[name]; !reflect.DeepEqual(expected, got) {
+				t.Fatalf("project [%s] failed to load: expected:\n%#+v\nbut got\n%#+v", name, expected, got)
 			}
 		}
 	}
