@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
+	"net/url"
 	"strings"
 
 	"github.com/kataras/iris-cli/utils"
@@ -35,24 +35,19 @@ func (r *Registry) Load() error {
 
 	if r.EndpointAsset != nil {
 		body, err = r.EndpointAsset(r.Endpoint)
-		if err != nil {
-			return err
-		}
 	} else {
-		body, err = utils.Download(r.Endpoint, nil)
-		if err != nil {
-			// check if Endpoint is a file, and if it's read from it instead.
-			if _, ioErr := os.Stat(r.Endpoint); ioErr == nil {
-				body, err = ioutil.ReadFile(r.Endpoint)
-				if err != nil {
-					return err
-				}
-			} else if !os.IsNotExist(ioErr) { // if file probably exists but OS error.
-				return fmt.Errorf("%w\n%w", err, ioErr)
-			} else {
-				return err // if download failed and file does not exist.
+		if isURL := strings.HasPrefix(r.Endpoint, "http"); isURL {
+			if _, urlErr := url.Parse(r.Endpoint); urlErr != nil {
+				return err
 			}
+			body, err = utils.Download(r.Endpoint, nil)
+		} else {
+			body, err = ioutil.ReadFile(r.Endpoint)
 		}
+	}
+
+	if err != nil {
+		return err
 	}
 
 	ext := ".json"

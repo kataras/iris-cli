@@ -20,8 +20,7 @@ const (
 	//
 	// Note that this buildTime is not int64, it's type of string and it is provided at build time.
 	// Do not change!
-	buildTime    = ""
-	buildVersion = ""
+	buildTime = ""
 )
 
 func main() {
@@ -42,7 +41,7 @@ func main() {
 	// 	print(err.Error())
 	// }
 
-	app := cmd.New(buildRevision, buildTime, buildVersion)
+	app := cmd.New(buildRevision, buildTime)
 	if err := app.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

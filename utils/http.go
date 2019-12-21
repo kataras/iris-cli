@@ -2,6 +2,7 @@ package utils
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -32,6 +33,10 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode > 300 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("resource not available <%s>: %s", url, resp.Status)
+	}
 
 	var reader io.Reader = resp.Body
 
