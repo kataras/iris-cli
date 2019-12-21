@@ -34,7 +34,7 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode > 300 || resp.StatusCode >= 400 {
+	if code := resp.StatusCode; code < 200 || code >= 400 {
 		return nil, fmt.Errorf("resource not available <%s>: %s", url, resp.Status)
 	}
 

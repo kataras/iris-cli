@@ -23,12 +23,18 @@ type Project struct {
 }
 
 func New(dest, repo string) *Project {
-	return &Project{
-		Repo:   repo,
+	repoBranch := strings.Split(repo, "@") // i.e. github.com/author/project@v12
+	p := &Project{
+		Repo:   repoBranch[0],
 		Branch: "master",
 		Dest:   dest,
 		Module: "",
 	}
+	if len(repoBranch) > 1 {
+		p.Branch = repoBranch[1]
+	}
+
+	return p
 }
 
 func (p *Project) Install() error {
@@ -41,7 +47,11 @@ func (p *Project) Install() error {
 }
 
 func (p *Project) download() ([]byte, error) {
-	zipURL := fmt.Sprintf("https://%s/archive/%s.zip", p.Repo, p.Branch)
+	zipURL := fmt.Sprintf("%s/archive/%s.zip", p.Repo, p.Branch) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
+	if !strings.HasPrefix(p.Repo, "http") {
+		zipURL = "https://" + zipURL
+	}
+
 	return utils.Download(zipURL, nil)
 }
 
@@ -84,17 +94,21 @@ func (p *Project) unzip(body []byte) error {
 		shouldReplace = !bytes.Equal(oldModuleName, newModuleName)
 	)
 
-	// If destination is empty then set it to $GOPATH+newModuleName.
+	// If destination is empty then set it to %GOPATH%+newModuleName.
 	gopath := os.Getenv("GOPATH")
+	if gopath != "" {
+		gopath = filepath.Join(gopath, "src")
+	}
+
 	dest := p.Dest
 	if dest == "" {
 		if gopath != "" {
-			dest = filepath.Join(gopath, "src", filepath.Dir(p.Module))
+			dest = filepath.Join(gopath, filepath.Dir(p.Module))
 		} else {
 			dest, _ = os.Getwd()
 		}
 	} else {
-		dest = strings.Replace(dest, "${GOPATH}", gopath, 1)
+		dest = strings.Replace(dest, "%GOPATH%", gopath, 1)
 		d, err := filepath.Abs(dest)
 		if err == nil {
 			dest = d

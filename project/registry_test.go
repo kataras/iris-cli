@@ -9,9 +9,9 @@ import (
 func TestRemoteRegistryLoad(t *testing.T) {
 	var (
 		expected = &Registry{Projects: []*Project{
-			{Repo: "https://github.com/kataras/iris"},
-			{Repo: "https://github.com/kataras/neffos"},
-			{Repo: "https://github.com/kataras/neffos.js"},
+			{Repo: "github.com/kataras/iris"},
+			{Repo: "github.com/kataras/neffos"},
+			{Repo: "github.com/kataras/neffos.js"},
 		}}
 
 		tests = []func(*Registry) *Registry{
