@@ -13,6 +13,7 @@ func New(buildRevision, buildTime string) *cobra.Command {
 It can be used to install starter kits and project structures 
 Complete documentation is available at https://github.com/kataras/iris-cli`,
 		SilenceErrors: true,
+		SilenceUsage:  true,
 		Run: func(cmd *cobra.Command, args []string) {
 		},
 	}

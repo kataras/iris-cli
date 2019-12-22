@@ -16,27 +16,34 @@ import (
 type Project struct {
 	Name string `json:"name,omitempty" yaml:"Name" toml:"Name"` // e.g. starter-kit
 	// Remote.
-	Repo   string `json:"repo" yaml:"Repo" toml:"Repo"`                 // e.g. "github.com/iris-contrib/project1"
-	Branch string `json:"branch,omitempty" yaml:"Branch" toml:"Branch"` // if empty then set to "master"
+	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/project1"
+	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "master"
 	// Local.
 	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
 }
 
-func New(dest, repo string) *Project {
-	repoBranch := strings.Split(repo, "@") // i.e. github.com/author/project@v12
-	p := &Project{
-		Name:   "",
-		Repo:   repoBranch[0],
-		Branch: "master",
-		Dest:   dest,
-		Module: "",
-	}
-	if len(repoBranch) > 1 {
-		p.Branch = repoBranch[1]
+func SplitName(s string) (name string, version string) {
+	nameBranch := strings.Split(s, "@")
+	name = nameBranch[0]
+	if len(nameBranch) > 1 {
+		version = nameBranch[1]
+	} else {
+		version = "master"
 	}
 
-	return p
+	return
+}
+
+func New(name, repo string) *Project {
+	name, version := SplitName(name) // i.e. github.com/author/project@v12
+	return &Project{
+		Name:    name,
+		Repo:    repo,
+		Version: version,
+		Dest:    "",
+		Module:  "",
+	}
 }
 
 func (p *Project) Install() error {
@@ -49,20 +56,33 @@ func (p *Project) Install() error {
 }
 
 func (p *Project) download() ([]byte, error) {
-	zipURL := fmt.Sprintf("%s/archive/%s.zip", p.Repo, p.Branch) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
-	if !strings.HasPrefix(p.Repo, "http") {
-		zipURL = "https://" + zipURL
+	if p.Version == "latest" {
+		p.Version = "master"
 	}
 
+	zipURL := fmt.Sprintf("https://github.com/%s/archive/%s.zip", p.Repo, p.Version) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
 	return utils.Download(zipURL, nil)
 }
 
 func (p *Project) unzip(body []byte) error {
-	compressedRootFolder := filepath.Base(p.Repo) + "-" + p.Branch // e.g. iris-master
 	r, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return err
 	}
+
+	if len(r.File) == 0 {
+		return fmt.Errorf("empty zip")
+	}
+
+	first := r.File[0]
+	if !first.FileInfo().IsDir() {
+		return fmt.Errorf("expected a root folder but got <%s>", first.Name)
+	}
+
+	if base := filepath.Base(p.Repo); !strings.Contains(first.Name, base) {
+		return fmt.Errorf("expected root folder to match the repository name <%s> but got <%s>", base, first.Name)
+	}
+	compressedRootFolder := first.Name // e.g. iris-master
 
 	var oldModuleName []byte
 	// Find current module name, starting from the end because list is sorted alphabetically
@@ -89,6 +109,11 @@ func (p *Project) unzip(body []byte) error {
 
 			break
 		}
+	}
+
+	if len(oldModuleName) == 0 {
+		// no go mod found, stop here  as we dont' support non-go modules, Iris depends on go 1.13.
+		return fmt.Errorf("project <%s> version <%s> is not a go module, please try other version", p.Name, p.Version)
 	}
 
 	var (
@@ -164,7 +189,10 @@ func (p *Project) unzip(body []byte) error {
 		}
 	}
 
-	newpath := filepath.Join(dest, filepath.Base(p.Module))
-	os.RemoveAll(newpath)
-	return os.Rename(filepath.Join(dest, compressedRootFolder), newpath)
+	// TODO: if version >= 2 then the module path will end with ./$version,
+	// but we must extract it as repo name not $version, see filepath.Base below.
+	newPath := filepath.Join(dest, filepath.Base(p.Module))
+	os.RemoveAll(newPath)
+	return os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
+	return nil
 }

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/kataras/iris-cli/project"
 	"github.com/kataras/iris-cli/utils"
@@ -21,10 +20,12 @@ func newCommand() *cobra.Command {
 			// arguments.
 			Name string
 			// flags.
-			Module string
-			Dest   string
+			Version string
+			Module  string
+			Dest    string
 		}{
-			Dest: "./",
+			Version: "master",
+			Dest:    "./",
 		}
 	)
 
@@ -38,16 +39,23 @@ func newCommand() *cobra.Command {
 			}
 
 			if len(args) == 0 {
-				availableNames := make([]string, 0, len(reg.Projects))
-				for name := range reg.Projects {
-					availableNames = append(availableNames, name)
-				}
-				sort.Strings(availableNames)
 
+				err := survey.AskOne(&survey.Select{Message: "Choose a project to install:", Options: reg.Names, PageSize: 10}, &opts.Name)
+				if err != nil {
+					return err
+				}
+
+				repo, ok := reg.Exists(opts.Name)
+				if !ok {
+					return fmt.Errorf("project <%s> is not available", opts.Name)
+				}
+
+				availableVersions := utils.ListReleases(repo)
+				availableVersions = append([]string{"latest"}, availableVersions...)
 				qs := []*survey.Question{
 					{
-						Name:   "name",
-						Prompt: &survey.Select{Message: "Choose a project to install:", Options: availableNames, PageSize: 10},
+						Name:   "version",
+						Prompt: &survey.Select{Message: "Select version:", Options: availableVersions, Default: opts.Version, PageSize: 5},
 					},
 					{
 						Name: "module",
@@ -65,11 +73,7 @@ func newCommand() *cobra.Command {
 				}
 
 			} else {
-				opts.Name = args[0]
-			}
-
-			if !reg.Exists(opts.Name) {
-				return fmt.Errorf("project <%s> is not available", opts.Name)
+				opts.Name, opts.Version = project.SplitName(args[0]) // split by @.
 			}
 
 			if !utils.Exists(opts.Dest) {
@@ -77,7 +81,7 @@ func newCommand() *cobra.Command {
 			}
 
 			defer utils.ShowIndicator(cmd.OutOrStderr())()
-			return reg.Install(opts.Name, opts.Module, opts.Dest)
+			return reg.Install(opts.Name, opts.Version, opts.Module, opts.Dest)
 		},
 	}
 

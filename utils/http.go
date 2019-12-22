@@ -2,6 +2,7 @@ package utils
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -50,4 +51,28 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 	}
 
 	return ioutil.ReadAll(reader)
+}
+
+// ListReleases lists all releases of a github "repo".
+func ListReleases(repo string) []string {
+	resp := []struct {
+		TagName string `json:"tag_name"`
+	}{}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", repo)
+	b, err := Download(url, nil)
+	if err != nil {
+		return nil
+	}
+
+	if err := json.Unmarshal(b, &resp); err != nil {
+		return nil
+	}
+
+	releases := make([]string, 0, len(resp))
+	for _, v := range resp {
+		releases = append(releases, v.TagName)
+	}
+
+	return releases
 }

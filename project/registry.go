@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/kataras/iris-cli/utils"
@@ -17,15 +18,16 @@ const DefaultRegistryEndpoint = "https://iris-go.com/cli/registry.json"
 
 type Registry struct {
 	Endpoint      string                       `json:"endpoint,omitempty" yaml:"Endpoint" toml:"Endpoint"`
-	EndpointAsset func(string) ([]byte, error) `json:"-" yaml:"-" toml:"-"` // If EndpointAsset is not nil then it reads the Endpoint from that `EndpointAsset` function.
-	Projects      map[string]*Project          `json:"projects" yaml:"Projects" toml:"Projects"`
+	EndpointAsset func(string) ([]byte, error) `json:"-" yaml:"-" toml:"-"`                      // If EndpointAsset is not nil then it reads the Endpoint from that `EndpointAsset` function.
+	Projects      map[string]string            `json:"projects" yaml:"Projects" toml:"Projects"` // key = name, value = repo.
 	installed     map[string]struct{}
+	Names         []string `json:"-" yaml:"-" toml:"-"` // sorted Projects names.
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
 		Endpoint:  DefaultRegistryEndpoint,
-		Projects:  make(map[string]*Project),
+		Projects:  make(map[string]string),
 		installed: make(map[string]struct{}),
 	}
 }
@@ -60,29 +62,46 @@ func (r *Registry) Load() error {
 
 	switch ext {
 	case ".json":
-		return json.Unmarshal(body, r)
+		err = json.Unmarshal(body, r)
 	case ".yaml", ".yml":
-		return yaml.Unmarshal(body, r)
+		err = yaml.Unmarshal(body, r)
 	case ".toml", ".tml":
-		return toml.Unmarshal(body, r)
+		err = toml.Unmarshal(body, r)
 	default:
-		return fmt.Errorf("unknown extension: %s", ext)
+		err = fmt.Errorf("unknown extension: %s", ext)
 	}
+
+	if err != nil {
+		return err
+	}
+
+	names := make([]string, 0, len(r.Projects))
+	for name := range r.Projects {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	r.Names = names
+	return nil
 }
 
 // ErrProjectNotExists can be return as error value from the `Registry.Install` method.
 var ErrProjectNotExists = fmt.Errorf("project not exists")
 
 // Exists reports whether a project with "name" exists in the registry.
-func (r *Registry) Exists(name string) bool {
-	_, ok := r.Projects[name]
-	return ok
+func (r *Registry) Exists(name string) (string, bool) {
+	repo, ok := r.Projects[name]
+	return repo, ok
 }
 
 // Install downloads and unzips a project with "name" to "dest" as "module".
-func (r *Registry) Install(name string, module, dest string) error {
-	if p, ok := r.Projects[name]; ok {
-		// we use pointers, so this will be saved, as we want to - in the future we will have a list projects command too.
+func (r *Registry) Install(name, version, module, dest string) error {
+	for projectName, repo := range r.Projects {
+		if projectName != name {
+			continue
+		}
+
+		p := New(name, repo)
+		p.Version = version
 		p.Module = module
 		p.Dest = dest
 		err := p.Install()
@@ -94,3 +113,30 @@ func (r *Registry) Install(name string, module, dest string) error {
 
 	return ErrProjectNotExists
 }
+
+/* registry.json and registry.yaml examples follows.
+
+{
+    "projects": {
+        "iris": {
+            "repo": "github.com/kataras/iris",
+            "version": "v11"
+        },
+        "neffos": {
+            "repo": "github.com/kataras/neffos",
+            "version": "master"
+        }
+    }
+}
+
+Projects: {
+    iris: {
+        Repo: "github.com/kataras/iris",
+        Version: "v11"
+    },
+    neffos: {
+        Repo: "github.com/kataras/neffos",
+        Version: "master"
+    }
+}
+*/
