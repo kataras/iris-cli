@@ -37,6 +37,9 @@ func SplitName(s string) (name string, version string) {
 
 func New(name, repo string) *Project {
 	name, version := SplitName(name) // i.e. github.com/author/project@v12
+	if version == "" {
+		repo, version = SplitName(repo) // check the repo suffix too.
+	}
 	return &Project{
 		Name:    name,
 		Repo:    repo,
@@ -56,6 +59,7 @@ func (p *Project) Install() error {
 }
 
 func (p *Project) download() ([]byte, error) {
+	p.Version = strings.Split(p.Version, " ")[0]
 	if p.Version == "latest" {
 		p.Version = "master"
 	}
@@ -189,9 +193,8 @@ func (p *Project) unzip(body []byte) error {
 		}
 	}
 
-	// TODO: if version >= 2 then the module path will end with ./$version,
-	// but we must extract it as repo name not $version, see filepath.Base below.
-	newPath := filepath.Join(dest, filepath.Base(p.Module))
+	// Don't use Module name for path because it may contains a version suffix.
+	newPath := filepath.Join(dest, p.Name)
 	os.RemoveAll(newPath)
 	return os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
 	return nil

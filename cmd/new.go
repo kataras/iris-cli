@@ -34,12 +34,12 @@ func newCommand() *cobra.Command {
 		Short:         "New creates a new starter kit project.",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.Printf("Loading projects from <%s>\n", reg.Endpoint)
 			if err := reg.Load(); err != nil {
 				return err
 			}
 
 			if len(args) == 0 {
-
 				err := survey.AskOne(&survey.Select{Message: "Choose a project to install:", Options: reg.Names, PageSize: 10}, &opts.Name)
 				if err != nil {
 					return err
@@ -51,7 +51,11 @@ func newCommand() *cobra.Command {
 				}
 
 				availableVersions := utils.ListReleases(repo)
-				availableVersions = append([]string{"latest"}, availableVersions...)
+				if len(availableVersions) == 0 {
+					availableVersions = []string{"latest"}
+				} else if len(availableVersions) > 1 {
+					availableVersions[0] = availableVersions[0] + " (latest)"
+				}
 				qs := []*survey.Question{
 					{
 						Name:   "version",
@@ -59,7 +63,7 @@ func newCommand() *cobra.Command {
 					},
 					{
 						Name: "module",
-						Prompt: &survey.Input{Message: "Type the Go module name:", Default: opts.Module,
+						Prompt: &survey.Input{Message: "What should be the new module name?", Default: opts.Module,
 							Help: "Leave it empty to be the same as the remote repository or type a different go module name for your project"},
 					},
 					{
