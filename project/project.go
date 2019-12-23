@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +22,9 @@ type Project struct {
 	// Local.
 	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
+
+	// Post Installation.
+	InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
 }
 
 func SplitName(s string) (name string, version string) {
@@ -47,6 +51,14 @@ func New(name, repo string) *Project {
 		Dest:    "",
 		Module:  "",
 	}
+}
+
+func Run(projectPath string, stdOut, stdErr io.Writer) error {
+	goRun := exec.Command("go", "run", ".")
+	goRun.Dir = projectPath
+	goRun.Stdout = stdOut
+	goRun.Stderr = stdErr
+	return goRun.Run()
 }
 
 func (p *Project) Install() error {
@@ -166,9 +178,7 @@ func (p *Project) unzip(body []byte) error {
 			return err
 		}
 
-		var rc io.ReadCloser
-
-		rc, err = f.Open()
+		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
@@ -181,10 +191,11 @@ func (p *Project) unzip(body []byte) error {
 			}
 
 			newContents := bytes.ReplaceAll(contents, oldModuleName, newModuleName)
-			rc = utils.NoOpReadCloser(bytes.NewReader(newContents))
+			_, err = outFile.Write(newContents)
+		} else {
+			_, err = io.Copy(outFile, rc)
 		}
 
-		_, err = io.Copy(outFile, rc)
 		outFile.Close()
 		rc.Close()
 
@@ -196,6 +207,10 @@ func (p *Project) unzip(body []byte) error {
 	// Don't use Module name for path because it may contains a version suffix.
 	newPath := filepath.Join(dest, p.Name)
 	os.RemoveAll(newPath)
-	return os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
-	return nil
+	err = os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
+	if err == nil {
+		p.InstalledPath = newPath
+	}
+
+	return err
 }

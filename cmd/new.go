@@ -84,10 +84,12 @@ func newCommand() *cobra.Command {
 				cmd.Printf("Directory <%s> will be created.\n", opts.Dest)
 			}
 
-			defer utils.ShowIndicator(cmd.OutOrStderr())()
+			defer showIndicator(cmd)()
 			return reg.Install(opts.Name, opts.Version, opts.Module, opts.Dest)
 		},
 	}
+
+	cmd.AddCommand(&cobra.Command{Use: "subcommandOfNew"})
 
 	cmd.Flags().StringVar(&reg.Endpoint, "registry", reg.Endpoint, "--registry=URL or local file")
 	cmd.Flags().StringVar(&opts.Dest, "dest", opts.Dest, "--dest=empty for current working directory or %GOPATH%/author")
