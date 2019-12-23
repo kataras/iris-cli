@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"io"
 	"os"
 )
@@ -15,6 +16,25 @@ type noOpCloser struct {
 }
 
 func (r noOpCloser) Close() error { return nil }
+
+type multiCloser struct {
+	io.Reader
+	closers []io.ReadCloser
+}
+
+func (r multiCloser) Close() (err error) {
+	for _, c := range r.closers {
+		if cErr := c.Close(); cErr != nil {
+			if err == nil {
+				err = cErr
+			} else {
+				err = fmt.Errorf("%w\n%w", err, cErr)
+			}
+		}
+	}
+
+	return
+}
 
 // Exists tries to report whether the local physical "path" exists.
 func Exists(path string) bool {

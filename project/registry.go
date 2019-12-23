@@ -94,19 +94,17 @@ func (r *Registry) Exists(name string) (string, bool) {
 }
 
 // Install downloads and unzips a project with "name" to "dest" as "module".
-func (r *Registry) Install(name, version, module, dest string) error {
+func (r *Registry) Install(p *Project) error {
 	for projectName, repo := range r.Projects {
-		if projectName != name {
+		if projectName != p.Name {
 			continue
 		}
 
-		p := New(name, repo)
-		p.Version = version
-		p.Module = module
-		p.Dest = dest
+		p.Repo = repo
+
 		err := p.Install()
 		if err == nil {
-			r.installed[name] = struct{}{}
+			r.installed[projectName] = struct{}{}
 		}
 		return err
 	}

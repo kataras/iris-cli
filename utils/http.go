@@ -17,6 +17,16 @@ type DownloadOption func(*http.Request) error
 // Download returns the body of "url".
 // It uses the `http.DefaultClient` to download the resource specified by the "url" input argument.
 func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, error) {
+	r, err := DownloadReader(url, body, options...)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return ioutil.ReadAll(r)
+}
+
+// DownloadReader returns a response reader.
+func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -33,24 +43,26 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// defer resp.Body.Close()
+	var reader io.ReadCloser = resp.Body
 
 	if code := resp.StatusCode; code < 200 || code >= 400 {
+		reader.Close()
 		return nil, fmt.Errorf("resource not available <%s>: %s", url, resp.Status)
 	}
 
-	var reader io.Reader = resp.Body
-
 	if strings.Contains(resp.Header.Get("Content-Encoding"), "gzip") {
-		gzipReader, err := gzip.NewReader(resp.Body)
+		gzipReader, err := gzip.NewReader(reader)
 		if err != nil {
+			reader.Close()
 			return nil, err
 		}
-		defer gzipReader.Close()
-		reader = gzipReader
+
+		// defer gzipReader.Close()
+		reader = multiCloser{Reader: reader, closers: []io.ReadCloser{gzipReader, reader}}
 	}
 
-	return ioutil.ReadAll(reader)
+	return reader, nil
 }
 
 // ListReleases lists all releases of a github "repo".

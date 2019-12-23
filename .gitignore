@@ -1,4 +1,4 @@
 .vscode
-go.sum
 bin/
 _testfiles/
+go.sum

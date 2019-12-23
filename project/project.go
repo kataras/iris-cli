@@ -23,6 +23,8 @@ type Project struct {
 	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
 
+	// Pre Installation.
+	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post Installation.
 	InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
 }
@@ -43,7 +45,11 @@ func New(name, repo string) *Project {
 	name, version := SplitName(name) // i.e. github.com/author/project@v12
 	if version == "" {
 		repo, version = SplitName(repo) // check the repo suffix too.
+		if version == "" {
+			version = "master"
+		}
 	}
+
 	return &Project{
 		Name:    name,
 		Repo:    repo,
@@ -77,7 +83,17 @@ func (p *Project) download() ([]byte, error) {
 	}
 
 	zipURL := fmt.Sprintf("https://github.com/%s/archive/%s.zip", p.Repo, p.Version) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
-	return utils.Download(zipURL, nil)
+	r, err := utils.DownloadReader(zipURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	if p.Reader != nil {
+		return p.Reader(r)
+	}
+
+	return ioutil.ReadAll(r)
 }
 
 func (p *Project) unzip(body []byte) error {

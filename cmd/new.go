@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 
 	"github.com/kataras/iris-cli/project"
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/cheggaaa/pb/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -16,16 +19,21 @@ func newCommand() *cobra.Command {
 	var (
 		reg = project.NewRegistry()
 
-		opts = struct {
-			// arguments.
-			Name string
-			// flags.
-			Version string
-			Module  string
-			Dest    string
-		}{
+		opts = project.Project{
 			Version: "master",
 			Dest:    "./",
+			Reader: func(r io.Reader) ([]byte, error) {
+				tmpl := `{{string . "all_bytes" | green -}} {{etime . "%s elapsed"}} {{speed . }}`
+
+				//									Content-Length is not available
+				//									on Github release download response.
+				bar := pb.ProgressBarTemplate(tmpl).Start64(0).SetMaxWidth(45)
+				defer bar.Finish()
+
+				b, err := ioutil.ReadAll(bar.NewProxyReader(r))
+				bar.Set("all_bytes", formatByteLength(len(b))+" ")
+				return b, err
+			},
 		}
 	)
 
@@ -84,16 +92,33 @@ func newCommand() *cobra.Command {
 				cmd.Printf("Directory <%s> will be created.\n", opts.Dest)
 			}
 
-			defer showIndicator(cmd)()
-			return reg.Install(opts.Name, opts.Version, opts.Module, opts.Dest)
+			err := reg.Install(&opts)
+			if err != nil {
+				return err
+			}
+
+			cmd.Printf("Project <%s> created.\n", opts.InstalledPath)
+			return nil
 		},
 	}
-
-	cmd.AddCommand(&cobra.Command{Use: "subcommandOfNew"})
 
 	cmd.Flags().StringVar(&reg.Endpoint, "registry", reg.Endpoint, "--registry=URL or local file")
 	cmd.Flags().StringVar(&opts.Dest, "dest", opts.Dest, "--dest=empty for current working directory or %GOPATH%/author")
 	cmd.Flags().StringVar(&opts.Module, "module", opts.Module, "--module=local module name")
 
 	return cmd
+}
+
+func formatByteLength(b int) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB",
+		float64(b)/float64(div), "kMGTPE"[exp])
 }
