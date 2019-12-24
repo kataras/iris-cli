@@ -55,12 +55,7 @@ func (r *Registry) Load() error {
 		return err
 	}
 
-	ext := ".json"
-	if extIdx := strings.LastIndexByte(r.Endpoint, '.'); extIdx > 0 {
-		ext = r.Endpoint[extIdx:]
-	}
-
-	switch ext {
+	switch ext := utils.Ext(r.Endpoint); ext {
 	case ".json":
 		err = json.Unmarshal(body, r)
 	case ".yaml", ".yml":

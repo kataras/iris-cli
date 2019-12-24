@@ -23,15 +23,15 @@ func newCommand() *cobra.Command {
 			Version: "master",
 			Dest:    "./",
 			Reader: func(r io.Reader) ([]byte, error) {
-				tmpl := `{{string . "all_bytes" | green -}} {{etime . "%s elapsed"}} {{speed . }}`
-
+				tmpl := `{{etime . "%s elapsed"}} {{speed . }}`
 				//									Content-Length is not available
 				//									on Github release download response.
 				bar := pb.ProgressBarTemplate(tmpl).Start64(0).SetMaxWidth(45)
 				defer bar.Finish()
 
 				b, err := ioutil.ReadAll(bar.NewProxyReader(r))
-				bar.Set("all_bytes", formatByteLength(len(b))+" ")
+				bar.SetTemplateString(`{{etime . "%s elapsed"}} [{{string . "all_bytes" | green}}]`)
+				bar.Set("all_bytes", formatByteLength(len(b)))
 				return b, err
 			},
 		}

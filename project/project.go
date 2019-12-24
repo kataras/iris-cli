@@ -133,7 +133,7 @@ func (p *Project) unzip(body []byte) error {
 				return err
 			}
 
-			oldModuleName = []byte(utils.ModulePath(contents))
+			oldModuleName = utils.ModulePath(contents)
 			if p.Module == "" {
 				// if new module name is empty, then default it to the remote one.
 				p.Module = string(oldModuleName)
@@ -153,27 +153,7 @@ func (p *Project) unzip(body []byte) error {
 		shouldReplace = !bytes.Equal(oldModuleName, newModuleName)
 	)
 
-	// If destination is empty then set it to %GOPATH%+newModuleName.
-	gopath := os.Getenv("GOPATH")
-	if gopath != "" {
-		gopath = filepath.Join(gopath, "src")
-	}
-
-	dest := p.Dest
-	if dest == "" {
-		if gopath != "" {
-			dest = filepath.Join(gopath, filepath.Dir(p.Module))
-		} else {
-			dest, _ = os.Getwd()
-		}
-	} else {
-		dest = strings.Replace(dest, "%GOPATH%", gopath, 1)
-	}
-	d, err := filepath.Abs(dest)
-	if err == nil {
-		dest = d
-	}
-	p.Dest = dest
+	p.Dest = utils.Dest(p.Dest)
 
 	for _, f := range r.File {
 		// without the /$project-$version root folder, so it can be used to dest as it is without creating a new folder based on the project name.
@@ -182,10 +162,10 @@ func (p *Project) unzip(body []byte) error {
 			// root folder.
 			continue
 		}
-		fpath := filepath.Join(dest, name)
+		fpath := filepath.Join(p.Dest, name)
 
 		// https://snyk.io/research/zip-slip-vulnerability#go
-		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
+		if !strings.HasPrefix(fpath, p.Dest+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal path: %s", fpath)
 		}
 
