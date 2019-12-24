@@ -97,7 +97,7 @@ func newCommand() *cobra.Command {
 				return err
 			}
 
-			cmd.Printf("Project <%s> created.\n", opts.InstalledPath)
+			// cmd.Printf("Project <%s> created.\n", opts.Dest)
 			return nil
 		},
 	}

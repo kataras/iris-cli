@@ -26,7 +26,7 @@ type Project struct {
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post Installation.
-	InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
+	// InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
 }
 
 func SplitName(s string) (name string, version string) {
@@ -168,16 +168,21 @@ func (p *Project) unzip(body []byte) error {
 		}
 	} else {
 		dest = strings.Replace(dest, "%GOPATH%", gopath, 1)
-		d, err := filepath.Abs(dest)
-		if err == nil {
-			dest = d
-		}
+	}
+	d, err := filepath.Abs(dest)
+	if err == nil {
+		dest = d
 	}
 	p.Dest = dest
 
 	for _, f := range r.File {
-		// Store filename/path for returning and using later on
-		fpath := filepath.Join(dest, f.Name)
+		// without the /$project-$version root folder, so it can be used to dest as it is without creating a new folder based on the project name.
+		name := strings.TrimPrefix(f.Name, compressedRootFolder)
+		if name == "" {
+			// root folder.
+			continue
+		}
+		fpath := filepath.Join(dest, name)
 
 		// https://snyk.io/research/zip-slip-vulnerability#go
 		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
@@ -221,12 +226,12 @@ func (p *Project) unzip(body []byte) error {
 	}
 
 	// Don't use Module name for path because it may contains a version suffix.
-	newPath := filepath.Join(dest, p.Name)
-	os.RemoveAll(newPath)
-	err = os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
-	if err == nil {
-		p.InstalledPath = newPath
-	}
+	// newPath := filepath.Join(dest, p.Name)
+	// os.RemoveAll(newPath)
+	// err = os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
+	// if err == nil {
+	// 	p.InstalledPath = newPath
+	// }
 
-	return err
+	return nil
 }

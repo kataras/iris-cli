@@ -111,30 +111,3 @@ func (r *Registry) Install(p *Project) error {
 
 	return ErrProjectNotExists
 }
-
-/* registry.json and registry.yaml examples follows.
-
-{
-    "projects": {
-        "iris": {
-            "repo": "github.com/kataras/iris",
-            "version": "v11"
-        },
-        "neffos": {
-            "repo": "github.com/kataras/neffos",
-            "version": "master"
-        }
-    }
-}
-
-Projects: {
-    iris: {
-        Repo: "github.com/kataras/iris",
-        Version: "v11"
-    },
-    neffos: {
-        Repo: "github.com/kataras/neffos",
-        Version: "master"
-    }
-}
-*/

@@ -4,10 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	// "github.com/kataras/iris-cli/project"
-	// "github.com/kataras/iris-cli/utils"
-
-	// "github.com/AlecAivazis/survey/v2"
 	"github.com/kataras/iris-cli/cmd"
 )
 
@@ -24,23 +20,6 @@ const (
 )
 
 func main() {
-	// defer utils.ShowIndicator(nil)()
-
-	// p := project.New("./", "github.com/kataras/sitemap")
-	// p.Module = "github.com/author/my_project"
-	// // These should work too.
-	// // p.Dest = ""
-	// // AND
-	// // p.Dest = "./"
-	// // p.Module = ""
-	// // AND
-	// // p.Dest = ""
-	// // p.Module = ""
-
-	// if err := p.Install(); err != nil {
-	// 	print(err.Error())
-	// }
-
 	app := cmd.New(buildRevision, buildTime)
 	if err := app.Execute(); err != nil {
 		fmt.Println(err)

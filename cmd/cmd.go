@@ -8,17 +8,58 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var shared = make(map[string]interface{}) // key = root command/app and value.
+// New returns the root command.
+func New(buildRevision, buildTime string) *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "iris-cli",
+		Short: "Command Line Interface for Iris",
+		Long: `Iris CLI is a tool for Iris Web Framework.
+It can be used to install starter kits and project structures 
+Complete documentation is available at https://github.com/kataras/iris-cli`,
+		SilenceErrors:              true,
+		SilenceUsage:               true,
+		TraverseChildren:           true,
+		SuggestionsMinimumDistance: 1,
+		Run: func(cmd *cobra.Command, args []string) {
+		},
+	}
+
+	helpTemplate := HelpTemplate{
+		BuildRevision:        buildRevision,
+		BuildTime:            buildTime,
+		ShowGoRuntimeVersion: true,
+	}
+	rootCmd.SetHelpTemplate(helpTemplate.String())
+
+	// Commands.
+	rootCmd.AddCommand(newCommand())
+	rootCmd.AddCommand(runCommand())
+
+	return rootCmd
+}
+
+var shared = make(map[string]map[string]interface{}) // key = root command/app and value a map of key-value pair.
 
 // SetValue sets a value to the shared store for specific app based on the root "cmd".
-func SetValue(cmd *cobra.Command, value interface{}) {
-	shared[cmd.Root().Name()] = value
+func SetValue(cmd *cobra.Command, key string, value interface{}) {
+	name := cmd.Root().Name()
+
+	m := shared[name]
+	if m == nil {
+		m = make(map[string]interface{})
+		shared[name] = m
+	}
+
+	m[key] = value
 }
 
 // GetValue retrieves a value from the shared store from a specific app based on the root "cmd".
-func GetValue(cmd *cobra.Command) (interface{}, bool) {
-	if v, ok := shared[cmd.Root().Name()]; ok {
-		return v, true
+func GetValue(cmd *cobra.Command, key string) (interface{}, bool) {
+	if m, ok := shared[cmd.Root().Name()]; ok {
+		v := m[key]
+		if v != nil {
+			return m, true
+		}
 	}
 
 	return nil, false
@@ -50,36 +91,6 @@ func RunCommand(from *cobra.Command, commandToRun string, args ...string) error 
 	}
 
 	return nil
-}
-
-// New returns the root command.
-func New(buildRevision, buildTime string) *cobra.Command {
-	rootCmd := &cobra.Command{
-		Use:   "iris-cli",
-		Short: "Command Line Interface for Iris",
-		Long: `Iris CLI is a tool for Iris Web Framework.
-It can be used to install starter kits and project structures 
-Complete documentation is available at https://github.com/kataras/iris-cli`,
-		SilenceErrors:              true,
-		SilenceUsage:               true,
-		TraverseChildren:           true,
-		SuggestionsMinimumDistance: 1,
-		Run: func(cmd *cobra.Command, args []string) {
-		},
-	}
-
-	helpTemplate := HelpTemplate{
-		BuildRevision:        buildRevision,
-		BuildTime:            buildTime,
-		ShowGoRuntimeVersion: true,
-	}
-	rootCmd.SetHelpTemplate(helpTemplate.String())
-
-	// Commands.
-	rootCmd.AddCommand(newCommand())
-	rootCmd.AddCommand(runCommand())
-
-	return rootCmd
 }
 
 // showIndicator writes a loader to "cmd".
