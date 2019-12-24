@@ -85,7 +85,7 @@ func newCommand() *cobra.Command {
 				}
 
 			} else {
-				opts.Name, opts.Version = project.SplitName(args[0]) // split by @.
+				opts.Name, opts.Version = utils.SplitNameVersion(args[0]) // split by @.
 			}
 
 			if !utils.Exists(opts.Dest) {

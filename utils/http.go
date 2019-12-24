@@ -59,7 +59,7 @@ func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.R
 		}
 
 		// defer gzipReader.Close()
-		reader = multiCloser{Reader: reader, closers: []io.ReadCloser{gzipReader, reader}}
+		reader = multiCloser{Reader: gzipReader, closers: []io.ReadCloser{gzipReader, reader}}
 	}
 
 	return reader, nil

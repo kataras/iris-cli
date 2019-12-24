@@ -1,14 +1,17 @@
 package utils
 
 import (
-	"bytes"
 	"fmt"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
+
+func init() {
+	mime.AddExtensionType(".go", "text/plain; charset=utf-8")
+}
 
 // NoOpReadCloser wraps the "r" and returns a new io.ReadCloser which its `Close` does nothing.
 func NoOpReadCloser(r io.Reader) io.ReadCloser {
@@ -48,13 +51,16 @@ func Exists(path string) bool {
 
 	// It exists but it can cause other errors when reading but we don't care here.
 	return true
-
 }
 
 // Ext returns the filepath extension of "s".
 func Ext(s string) string {
 	if idx := strings.LastIndexByte(s, '.'); idx > 0 && len(s)-1 > idx {
-		return s[idx:] // including dot.
+		ext := s[idx:] // including dot.
+		if mime.TypeByExtension(ext) != "" {
+			// to avoid act paths like "$gopath/src/github.com/project" as file.
+			return ext
+		}
 	}
 
 	return ""
@@ -78,56 +84,4 @@ func Dest(dest string) string {
 	}
 
 	return filepath.Clean(dest)
-}
-
-// ModulePath returns the module declaration of a go.mod file "b" contents.
-func ModulePath(b []byte) []byte {
-	return findDeclaration(b, moduleBytes)
-}
-
-// Package returns the package declaration (without "package") of "b" source-code contents.
-func Package(b []byte) []byte {
-	return findDeclaration(b, pkgBytes)
-}
-
-var (
-	slashSlash  = []byte("//")
-	moduleBytes = []byte("module")
-	pkgBytes    = []byte("package")
-)
-
-// findDeclaration returns the "delcarion $TEXT" of "b" contents.
-func findDeclaration(b []byte, declaration []byte) []byte {
-	for len(b) > 0 {
-		line := b
-		b = nil
-		if i := bytes.IndexByte(line, '\n'); i >= 0 {
-			line, b = line[:i], line[i+1:]
-		}
-		if i := bytes.Index(line, slashSlash); i >= 0 {
-			line = line[:i]
-		}
-		line = bytes.TrimSpace(line)
-		if !bytes.HasPrefix(line, declaration) {
-			continue
-		}
-		line = line[len(declaration):]
-		n := len(line)
-		line = bytes.TrimSpace(line)
-		if len(line) == n || len(line) == 0 {
-			continue
-		}
-
-		if line[0] == '"' || line[0] == '`' {
-			p, err := strconv.Unquote(string(line))
-			if err != nil {
-				return nil // malformed quoted string or multiline string
-			}
-			return []byte(p)
-		}
-
-		return line
-	}
-
-	return nil
 }

@@ -1,4 +1,4 @@
-package snippet
+package file
 
 import (
 	"bytes"
@@ -14,7 +14,8 @@ import (
 const supportedType = "file" // ignore dirs.
 
 // ListFiles returns a github repository's files.
-func ListFiles(repo, version string) (files []*File) {
+func ListFiles(repo, version string) ([]*File, error) {
+	repo, version = utils.SplitNameVersion(repo)
 	if version == "" {
 		version = "master"
 	}
@@ -24,11 +25,13 @@ func ListFiles(repo, version string) (files []*File) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents?ref=%s", repo, version)
 	b, err := utils.Download(url, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 
+	var files []*File
+
 	if err := json.Unmarshal(b, &files); err != nil {
-		return
+		return nil, err
 	}
 
 	for _, f := range resp {
@@ -39,7 +42,7 @@ func ListFiles(repo, version string) (files []*File) {
 		files = append(files, f)
 	}
 
-	return
+	return files, nil
 }
 
 // File represents a github file to be locally saved.
@@ -63,11 +66,20 @@ func (f *File) Install() error {
 		return err
 	}
 
-	if f.Package != "" {
-		b = bytes.ReplaceAll(b, utils.Package(b), []byte(f.Package))
-	} // TODO: if f.Package is empty then try to resolve it by reading one of the go's current working dir's files, if any.
-
 	fpath := utils.Dest(f.Dest)
+
+	var newPkg []byte
+
+	if f.Package != "" {
+		newPkg = []byte(f.Package)
+	} else {
+		newPkg = utils.TryFindPackage(fpath)
+	}
+
+	if len(newPkg) > 0 {
+		b = bytes.ReplaceAll(b, utils.Package(b), newPkg)
+	}
+
 	if isFile := utils.Ext(fpath) != ""; !isFile {
 		fpath = filepath.Join(fpath, f.Name)
 	}

@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-func TestRemoteRegistryLoad(t *testing.T) {
+func TestRegistry(t *testing.T) {
 	var (
-		expected = &Registry{Projects: map[string]*Project{
-			"iris":      {Repo: "github.com/kataras/iris"},
-			"neffos":    {Repo: "github.com/kataras/neffos"},
-			"neffos.js": {Repo: "github.com/kataras/neffos.js"},
+		expected = &Registry{Projects: map[string]string{
+			"iris":      "github.com/kataras/iris",
+			"neffos":    "github.com/kataras/neffos",
+			"neffos.js": "github.com/kataras/neffos.js",
 		}}
 
 		tests = []func(*Registry) *Registry{

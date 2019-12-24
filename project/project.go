@@ -29,22 +29,10 @@ type Project struct {
 	// InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
 }
 
-func SplitName(s string) (name string, version string) {
-	nameBranch := strings.Split(s, "@")
-	name = nameBranch[0]
-	if len(nameBranch) > 1 {
-		version = nameBranch[1]
-	} else {
-		version = "master"
-	}
-
-	return
-}
-
 func New(name, repo string) *Project {
-	name, version := SplitName(name) // i.e. github.com/author/project@v12
+	name, version := utils.SplitNameVersion(name) // i.e. github.com/author/project@v12
 	if version == "" {
-		repo, version = SplitName(repo) // check the repo suffix too.
+		repo, version = utils.SplitNameVersion(repo) // check the repo suffix too.
 		if version == "" {
 			version = "master"
 		}
