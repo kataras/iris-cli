@@ -64,7 +64,7 @@ func (f *File) Install() error {
 	}
 
 	if f.Package != "" {
-		b = bytes.ReplaceAll(b, []byte(f.Package), utils.Package(b))
+		b = bytes.ReplaceAll(b, utils.Package(b), []byte(f.Package))
 	} // TODO: if f.Package is empty then try to resolve it by reading one of the go's current working dir's files, if any.
 
 	fpath := utils.Dest(f.Dest)

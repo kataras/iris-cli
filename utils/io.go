@@ -51,7 +51,7 @@ func Exists(path string) bool {
 
 }
 
-// Ext returns the filepath extension of "s"
+// Ext returns the filepath extension of "s".
 func Ext(s string) string {
 	if idx := strings.LastIndexByte(s, '.'); idx > 0 && len(s)-1 > idx {
 		return s[idx:] // including dot.
@@ -64,7 +64,7 @@ func Ext(s string) string {
 func Dest(dest string) string {
 	if dest == "" {
 		dest, _ = os.Getwd()
-	} else if s := "%GOPATH"; strings.Contains(dest, s) {
+	} else if s := "%GOPATH%"; strings.Contains(dest, s) {
 		gopath := os.Getenv("GOPATH")
 		if gopath != "" {
 			gopath = filepath.Join(gopath, "src")
