@@ -109,7 +109,13 @@ func addCommand() *cobra.Command {
 				}
 			}
 
-			return file.Install()
+			err := file.Install()
+			if missingKeys, ok := snippet.IsMissingKeys(err); ok {
+				// TODO: ask for these.
+				_ = missingKeys
+			}
+
+			return err
 		},
 	}
 

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
+	templateparse "text/template/parse"
 
 	"github.com/kataras/iris-cli/utils"
 )
@@ -61,6 +63,27 @@ type File struct {
 	Package      string                 `json:"-"` // The go package declaration.
 	Data         map[string]interface{} `json:"-"` // Any template data.
 	Replacements map[string]string      `json:"-"` // Any replacements.
+}
+
+//
+type errMissingKeys struct {
+	Keys        []string
+	TemplateURL string
+}
+
+func (err errMissingKeys) Error() string {
+	return fmt.Sprintf("template: %s: map has no entry for keys: %s", err.TemplateURL, strings.Join(err.Keys, ", "))
+}
+
+// IsMissingKeys reports whether an "err" is caused because of of missing keys.
+func IsMissingKeys(err error) ([]string, bool) {
+	if err != nil {
+		if v, ok := err.(errMissingKeys); ok {
+			return v.Keys, true
+		}
+	}
+
+	return nil, false
 }
 
 // Install downloads and performs necessary tasks to save a remote file.
@@ -117,11 +140,40 @@ func (f *File) Install() error {
 	defer outFile.Close()
 
 	if f.Data != nil {
-		tmpl, err := template.New("").Parse(string(b))
-		if err != nil {
-			return err
+		tmpl, tmplErr := template.New(fpath).Option("missingkey=error").Parse(string(b))
+		if tmplErr != nil {
+			return tmplErr
 		}
+
 		err = tmpl.Execute(outFile, f.Data)
+		if err != nil && strings.Contains(err.Error(), "map has no entry for key ") {
+			// Check if a field is not a f.Data match,
+			// which will lead on execute error on first undefined (missingkey=error).
+			// So collect all these keys so we can have a typed error with all unknown keys listed.
+			var missingKeys []string
+			for _, n := range tmpl.Root.Nodes {
+				if n.Type() == templateparse.NodeAction {
+					key := strings.TrimFunc(n.String(), func(r rune) bool {
+						return r == '{' || r == '}' || r == ' ' || r == '.'
+					})
+
+					if key == "" {
+						continue
+					}
+
+					if _, ok := f.Data[key]; !ok {
+						missingKeys = append(missingKeys, strconv.Quote(key))
+					}
+				}
+			}
+
+			// if just one then keep the original error which contains the full context,
+			// else set to custom error type which will keep the missing keys for caller's further use.
+			if len(missingKeys) > 1 {
+				return errMissingKeys{TemplateURL: f.DownloadURL, Keys: missingKeys}
+			}
+		}
+
 	} else {
 		_, err = outFile.Write(b)
 	}
