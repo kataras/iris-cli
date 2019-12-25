@@ -57,10 +57,10 @@ type File struct {
 	DownloadURL string `json:"download_url"`
 	Version     string `json:"-"`
 	// Local.
-	Dest    string                 `json:"-"` // The destination path, including the filename (if does not contain a filename the "Name" will be used instead.)
-	Package string                 `json:"-"` // The go package declaration.
-	Data    map[string]interface{} `json:"-"` // Any template data.
-	// Replacements map[string]string      `json:"-"` // Any replacements.
+	Dest         string                 `json:"-"` // The destination path, including the filename (if does not contain a filename the "Name" will be used instead.)
+	Package      string                 `json:"-"` // The go package declaration.
+	Data         map[string]interface{} `json:"-"` // Any template data.
+	Replacements map[string]string      `json:"-"` // Any replacements.
 }
 
 // Install downloads and performs necessary tasks to save a remote file.
@@ -86,7 +86,7 @@ func (f *File) Install() error {
 
 	fpath := utils.Dest(f.Dest)
 	if isFile := utils.Ext(fpath) != ""; !isFile {
-		fpath = filepath.Join(fpath, f.Name)
+		fpath = filepath.Join(fpath, filepath.Base(f.Name))
 	}
 
 	var newPkg []byte
@@ -99,6 +99,15 @@ func (f *File) Install() error {
 
 	if len(newPkg) > 0 {
 		b = bytes.ReplaceAll(b, utils.Package(b), newPkg)
+	}
+
+	if len(f.Replacements) > 0 {
+		s := string(b)
+		for oldValue, newValue := range f.Replacements {
+			s = strings.ReplaceAll(s, oldValue, newValue)
+		}
+
+		b = []byte(s)
 	}
 
 	outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)

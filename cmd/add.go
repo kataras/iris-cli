@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"sort"
 	"strings"
 
@@ -13,16 +16,25 @@ import (
 
 const defaultRepo = "iris-contrib/snippets"
 
-// iris-cli add --repo=kataras/golog logger.go@v0.0.10
+// iris-cli add --repo=iris-contrib/snippets logger.go@v0.0.10
 // iris-cli add logger.go
-// iris-cli add --repo=kataras/golog
+// iris-cli add --repo=iris-contrib/snippets
+// iris-cli add --data=data.json --repo=kataras/iris _examples/view/template_html_0/templates/hi.html
 func addCommand() *cobra.Command {
-	var file = snippet.File{
-		Repo:    defaultRepo,
-		Version: "master",
-		Dest:    "./",
-		Package: "",
-	}
+	var (
+		file = snippet.File{
+			Repo:    defaultRepo,
+			Version: "master",
+			Dest:    "./",
+			Package: "",
+		}
+
+		tmplDataFile string // TODO: read JSON with prompt and flag.
+		readDataFile = func(path string, ptr interface{}) {
+			b, _ := ioutil.ReadFile(path)
+			json.Unmarshal(b, &ptr)
+		}
+	)
 
 	cmd := &cobra.Command{
 		Use:           "add",
@@ -52,12 +64,26 @@ func addCommand() *cobra.Command {
 				qs := []*survey.Question{
 					{
 						Name:   "Name",
-						Prompt: &survey.Select{Message: "Select snippet:", Options: availableSnippets, PageSize: 15},
+						Prompt: &survey.Select{Message: "Select snippet:", Options: availableSnippets, Default: file.Name, PageSize: 15},
 					},
 					{
 						Name: "Package",
-						Prompt: &survey.Input{Message: "What should be the new package name?",
+						Prompt: &survey.Input{Message: "What should be the new package name?", Default: file.Package,
 							Help: "Leave it empty to be resolved automatically by your current project's files"},
+					},
+					{
+						Name:     "_Data",
+						Validate: nil,
+						Transform: func(ans interface{}) (newAns interface{}) {
+							if path, ok := ans.(string); ok {
+								readDataFile(path, &file.Data) // can't set as &newAns because survey is uncorrectly passes is as string without checks on its input.go#101,
+								fmt.Printf("%#+v\n", newAns)
+							}
+							return
+						},
+
+						Prompt: &survey.Input{Message: "Load template data from json file:", Default: tmplDataFile,
+							Help: "Leave it empty if the snippet is not a template"},
 					},
 					{
 						Name:   "Dest",
@@ -66,10 +92,23 @@ func addCommand() *cobra.Command {
 				}
 
 				if err := survey.Ask(qs, &file); err != nil {
-					return err
+					if allowErr := "could not find field matching "; strings.HasPrefix(err.Error(), allowErr) {
+						if strings.TrimPrefix(err.Error(), allowErr)[0] == '_' {
+							// allow unmapped fiels that starts with _.
+							err = nil
+						}
+					}
+
+					if err != nil {
+						return err
+					}
 				}
 			} else {
 				file.Name, file.Version = utils.SplitNameVersion(args[0])
+
+				if tmplDataFile != "" {
+					readDataFile(tmplDataFile, &file.Data)
+				}
 			}
 
 			return file.Install()
@@ -79,6 +118,8 @@ func addCommand() *cobra.Command {
 	cmd.Flags().StringVar(&file.Repo, "repo", file.Repo, "--repo=iris-contrib/snippets")
 	cmd.Flags().StringVar(&file.Package, "pkg", file.Package, "--pkg=mypackage")
 	cmd.Flags().StringVar(&file.Dest, "dest", file.Dest, "--dest=./")
+	cmd.Flags().StringToStringVar(&file.Replacements, "replace", nil, "--replace=oldValue=newValue,oldValue2=newValue2")
+	cmd.Flags().StringVar(&tmplDataFile, "data", "", "--data=data.json")
 
 	return cmd
 }
