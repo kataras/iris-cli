@@ -9,3 +9,5 @@ require (
 	github.com/spf13/cobra v0.0.5
 	gopkg.in/yaml.v2 v2.2.2
 )
+
+replace github.com/AlecAivazis/survey/v2 => github.com/kataras/survey/v2 v2.0.6

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"sort"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/AlecAivazis/survey/v2"
+	surveycore "github.com/AlecAivazis/survey/v2/core"
 	"github.com/spf13/cobra"
 )
 
@@ -77,7 +77,6 @@ func addCommand() *cobra.Command {
 						Transform: func(ans interface{}) (newAns interface{}) {
 							if path, ok := ans.(string); ok {
 								readDataFile(path, &file.Data) // can't set as &newAns because survey is uncorrectly passes is as string without checks on its input.go#101,
-								fmt.Printf("%#+v\n", newAns)
 							}
 							return
 						},
@@ -92,9 +91,8 @@ func addCommand() *cobra.Command {
 				}
 
 				if err := survey.Ask(qs, &file); err != nil {
-					if allowErr := "could not find field matching "; strings.HasPrefix(err.Error(), allowErr) {
-						if strings.TrimPrefix(err.Error(), allowErr)[0] == '_' {
-							// allow unmapped fiels that starts with _.
+					if s, ok := surveycore.IsFieldNotMatch(err); ok {
+						if s[0] == '_' {
 							err = nil
 						}
 					}
