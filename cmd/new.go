@@ -24,8 +24,8 @@ func newCommand() *cobra.Command {
 			Dest:    "./",
 			Reader: func(r io.Reader) ([]byte, error) {
 				tmpl := `{{etime . "%s elapsed"}} {{speed . }}`
-				//									Content-Length is not available
-				//									on Github release download response.
+				// Content-Length is not available
+				// on Github release download response.
 				bar := pb.ProgressBarTemplate(tmpl).Start64(0).SetMaxWidth(45)
 				defer bar.Finish()
 
@@ -59,11 +59,10 @@ func newCommand() *cobra.Command {
 				}
 
 				availableVersions := utils.ListReleases(repo)
-				if len(availableVersions) == 0 {
-					availableVersions = []string{"latest"}
-				} else if len(availableVersions) > 1 {
+				if len(availableVersions) > 1 {
 					availableVersions[0] = availableVersions[0] + " (latest)"
 				}
+
 				qs := []*survey.Question{
 					{
 						Name:   "version",
@@ -78,6 +77,11 @@ func newCommand() *cobra.Command {
 						Name:   "dest",
 						Prompt: &survey.Input{Message: "Choose directory to be installed:", Default: opts.Dest},
 					},
+				}
+
+				if len(availableVersions) <= 1 {
+					// don't ask for version if only one or none exists.
+					qs = qs[1:]
 				}
 
 				if err := survey.Ask(qs, &opts); err != nil {

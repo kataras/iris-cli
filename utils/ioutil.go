@@ -11,6 +11,13 @@ import (
 
 func init() {
 	mime.AddExtensionType(".go", "text/plain; charset=utf-8")
+	mime.AddExtensionType(".mod", "text/plain; charset=utf-8")
+	mime.AddExtensionType(".sum", "text/plain; charset=utf-8")
+	mime.AddExtensionType(".json", "application/json; charset=utf-8")
+	mime.AddExtensionType(".yaml", "application/yaml; charset=utf-8")
+	mime.AddExtensionType(".yml", "application/yaml; charset=utf-8")
+	mime.AddExtensionType(".toml", "application/toml; charset=utf-8")
+	mime.AddExtensionType(".tml", "application/tml; charset=utf-8")
 }
 
 // NoOpReadCloser wraps the "r" and returns a new io.ReadCloser which its `Close` does nothing.
