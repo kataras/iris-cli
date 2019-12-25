@@ -20,9 +20,11 @@ func Package(b []byte) []byte {
 }
 
 var (
-	slashSlash  = []byte("//")
-	moduleBytes = []byte("module")
-	pkgBytes    = []byte("package")
+	slashSlash            = []byte("//")
+	multilineCommentStart = []byte("/*")
+	multilineCommentEnd   = []byte("*/")
+	moduleBytes           = []byte("module")
+	pkgBytes              = []byte("package")
 )
 
 // parseDeclaration returns the "delcarion $TEXT" of "b" contents.
@@ -36,6 +38,16 @@ func parseDeclaration(b []byte, declaration []byte) []byte {
 		if i := bytes.Index(line, slashSlash); i >= 0 {
 			line = line[:i]
 		}
+
+		// skip /* */ comment lines.
+		if i := bytes.Index(line, multilineCommentStart); i >= 0 {
+			i = bytes.Index(b, multilineCommentEnd)
+			if i > 0 {
+				b = b[i:]
+			}
+			continue
+		}
+
 		line = bytes.TrimSpace(line)
 		if !bytes.HasPrefix(line, declaration) {
 			continue
@@ -64,7 +76,10 @@ func parseDeclaration(b []byte, declaration []byte) []byte {
 // TryFindPackage returns a go package based on the dir,
 // it reads the package declaration of the `main.go` or any `*go`
 func TryFindPackage(dir string) (pkg []byte) {
+	ignoreFilename := ""
 	if Ext(dir) != "" { // could use os.Stat but let's use just extension to decide if it's file because the "dir" may not exist yet.
+		// before change it to dir, take the filename so we can ignore the current file's package name if exists.
+		ignoreFilename = filepath.Base(dir)
 		dir = filepath.Dir(dir)
 	}
 
@@ -83,11 +98,16 @@ func TryFindPackage(dir string) (pkg []byte) {
 			continue
 		}
 
-		if !strings.HasSuffix(f.Name(), ".go") { // read only go files.
+		fileName := f.Name()
+		if ignoreFilename == fileName {
 			continue
 		}
 
-		fpath := filepath.Join(dir, f.Name())
+		if !strings.HasSuffix(fileName, ".go") { // read only go files.
+			continue
+		}
+
+		fpath := filepath.Join(dir, fileName)
 		b, err := ioutil.ReadFile(fpath)
 		if err == nil {
 			if pkg = Package(b); len(pkg) > 0 {

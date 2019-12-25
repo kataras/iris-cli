@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kataras/iris-cli/file"
+	"github.com/kataras/iris-cli/snippet"
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -13,36 +13,29 @@ import (
 
 const defaultRepo = "iris-contrib/snippets"
 
+// iris-cli add --repo=kataras/golog logger.go@v0.0.10
+// iris-cli add logger.go
+// iris-cli add --repo=kataras/golog
 func addCommand() *cobra.Command {
-	var (
-		opts = struct {
-			Repo    string
-			Version string
-			Snippet string
-			Pkg     string
-			Dest    string
-		}{
-			Repo:    defaultRepo,
-			Version: "master",
-			Snippet: "",
-			Pkg:     "",
-			Dest:    "./",
-		}
-	)
+	var file = snippet.File{
+		Repo:    defaultRepo,
+		Version: "master",
+		Dest:    "./",
+		Package: "",
+	}
 
 	cmd := &cobra.Command{
 		Use:           "add",
 		Short:         "Add generates a file",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Snippet, opts.Version = utils.SplitNameVersion(opts.Snippet)
-			cmd.Printf("Loading snippets from <%s@%s>\n", opts.Repo, opts.Version)
-			files, err := file.ListFiles(opts.Repo, opts.Version)
-			if err != nil {
-				return err
-			}
-
 			if len(args) == 0 {
+				cmd.Printf("Loading snippets from <%s>\n", file.Repo)
+				files, err := snippet.ListFiles(file.Repo, file.Version)
+				if err != nil {
+					return err
+				}
+
 				availableSnippets := make([]string, 0, len(files))
 				for _, f := range files {
 					availableSnippets = append(availableSnippets, f.Name)
@@ -58,43 +51,34 @@ func addCommand() *cobra.Command {
 
 				qs := []*survey.Question{
 					{
-						Name:   "snippet",
+						Name:   "Name",
 						Prompt: &survey.Select{Message: "Select snippet:", Options: availableSnippets, PageSize: 15},
 					},
 					{
-						Name: "pkg",
+						Name: "Package",
 						Prompt: &survey.Input{Message: "What should be the new package name?",
 							Help: "Leave it empty to be resolved automatically by your current project's files"},
 					},
 					{
-						Name:   "dest",
-						Prompt: &survey.Input{Message: "Choose a file or directory to be saved:", Default: opts.Dest},
+						Name:   "Dest",
+						Prompt: &survey.Input{Message: "Choose a file or directory to be saved:", Default: file.Dest},
 					},
 				}
 
-				if err := survey.Ask(qs, &opts); err != nil {
+				if err := survey.Ask(qs, &file); err != nil {
 					return err
 				}
 			} else {
-				opts.Snippet, opts.Version = utils.SplitNameVersion(args[0]) // TODO: version is not respected here, make a single file downloader per version with a different API URL.
+				file.Name, file.Version = utils.SplitNameVersion(args[0])
 			}
 
-			for _, f := range files {
-				if f.Name == opts.Snippet {
-					f.Package = opts.Pkg
-					// f.Data = TODO: pass from flags.
-					f.Dest = opts.Dest
-					return f.Install()
-				}
-			}
-
-			return nil
+			return file.Install()
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Repo, "repo", opts.Repo, "--repo=iris-contrib/snippets")
-	cmd.Flags().StringVar(&opts.Pkg, "pkg", opts.Pkg, "--pkg=mypackage")
-	cmd.Flags().StringVar(&opts.Dest, "dest", opts.Dest, "--dest=./")
+	cmd.Flags().StringVar(&file.Repo, "repo", file.Repo, "--repo=iris-contrib/snippets")
+	cmd.Flags().StringVar(&file.Package, "pkg", file.Package, "--pkg=mypackage")
+	cmd.Flags().StringVar(&file.Dest, "dest", file.Dest, "--dest=./")
 
 	return cmd
 }
