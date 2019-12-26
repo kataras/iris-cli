@@ -65,17 +65,26 @@ type File struct {
 	Replacements map[string]string      `json:"-"` // Any replacements.
 }
 
-//
 type errMissingKeys struct {
 	Keys        []string
 	TemplateURL string
 }
 
 func (err errMissingKeys) Error() string {
-	return fmt.Sprintf("template: %s: map has no entry for keys: %s", err.TemplateURL, strings.Join(err.Keys, ", "))
+	keys := make([]string, len(err.Keys))
+	for i := range err.Keys {
+		keys[i] = strconv.Quote(err.Keys[i])
+	}
+
+	s := "keys"
+	if len(keys) == 1 {
+		s = s[:len(s)-1]
+	}
+
+	return fmt.Sprintf("template: %s: map has no entry for %s: %s", filepath.Base(err.TemplateURL), s, strings.Join(keys, ", "))
 }
 
-// IsMissingKeys reports whether an "err" is caused because of of missing keys.
+// IsMissingKeys reports whether an "err" is caused by template missing keys.
 func IsMissingKeys(err error) ([]string, bool) {
 	if err != nil {
 		if v, ok := err.(errMissingKeys); ok {
@@ -140,7 +149,7 @@ func (f *File) Install() error {
 	defer outFile.Close()
 
 	if f.Data != nil {
-		tmpl, tmplErr := template.New(fpath).Option("missingkey=error").Parse(string(b))
+		tmpl, tmplErr := template.New(f.Name).Option("missingkey=error").Parse(string(b))
 		if tmplErr != nil {
 			return tmplErr
 		}
@@ -162,16 +171,12 @@ func (f *File) Install() error {
 					}
 
 					if _, ok := f.Data[key]; !ok {
-						missingKeys = append(missingKeys, strconv.Quote(key))
+						missingKeys = append(missingKeys, key)
 					}
 				}
 			}
 
-			// if just one then keep the original error which contains the full context,
-			// else set to custom error type which will keep the missing keys for caller's further use.
-			if len(missingKeys) > 1 {
-				return errMissingKeys{TemplateURL: f.DownloadURL, Keys: missingKeys}
-			}
+			return errMissingKeys{TemplateURL: f.DownloadURL, Keys: missingKeys}
 		}
 
 	} else {

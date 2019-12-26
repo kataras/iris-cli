@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"sort"
 	"strings"
 
@@ -29,11 +27,7 @@ func addCommand() *cobra.Command {
 			Package: "",
 		}
 
-		tmplDataFile string // TODO: read JSON with prompt and flag.
-		readDataFile = func(path string, ptr interface{}) {
-			b, _ := ioutil.ReadFile(path)
-			json.Unmarshal(b, &ptr)
-		}
+		tmplDataFile string
 	)
 
 	cmd := &cobra.Command{
@@ -76,7 +70,7 @@ func addCommand() *cobra.Command {
 						Validate: nil,
 						Transform: func(ans interface{}) (newAns interface{}) {
 							if path, ok := ans.(string); ok {
-								readDataFile(path, &file.Data) // can't set as &newAns because survey is uncorrectly passes is as string without checks on its input.go#101,
+								readDataFile(cmd, path, &file.Data) // can't set as &newAns because survey use that as string without checks on its input.go#101.
 							}
 							return
 						},
@@ -105,15 +99,27 @@ func addCommand() *cobra.Command {
 				file.Name, file.Version = utils.SplitNameVersion(args[0])
 
 				if tmplDataFile != "" {
-					readDataFile(tmplDataFile, &file.Data)
+					readDataFile(cmd, tmplDataFile, &file.Data)
 				}
 			}
 
 			err := file.Install()
 			if missingKeys, ok := snippet.IsMissingKeys(err); ok {
-				// TODO: ask for these.
-				_ = missingKeys
+				// print the error and give the chance to the user to fill those (as strings).
+				cmd.Println(err)
+
+				for _, k := range missingKeys {
+					var ans string
+					err = survey.AskOne(&survey.Input{Message: k + ": ", Default: tmplDataFile,
+						Help: "The template data key " + k + " is missing please fill it."}, &ans)
+					if err == nil {
+						file.Data[k] = ans
+					} else {
+						println(err.Error())
+					}
+				}
 			}
+			err = file.Install()
 
 			return err
 		},

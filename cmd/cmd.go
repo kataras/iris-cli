@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"context"
+	"encoding/json"
+	"io/ioutil"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -94,43 +94,17 @@ func RunCommand(from *cobra.Command, commandToRun string, args ...string) error 
 	return nil
 }
 
-// showIndicator writes a loader to "cmd".
-// Usage: defer showIndicator(cmd)()
-func showIndicator(cmd *cobra.Command) func() {
-	w := cmd.OutOrStderr()
-	if w == nil {
-		w = os.Stdout
+func readDataFile(cmd *cobra.Command, path string, ptr interface{}) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		cmd.PrintErrln(err)
+		os.Exit(1)
+		return
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
-
-	go func() {
-		w.Write([]byte("|"))
-		w.Write([]byte("_"))
-		w.Write([]byte("|"))
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-
-				w.Write([]byte("\010\010-"))
-				time.Sleep(time.Second / 2)
-				w.Write([]byte("\010\\"))
-				time.Sleep(time.Second / 2)
-				w.Write([]byte("\010|"))
-				time.Sleep(time.Second / 2)
-				w.Write([]byte("\010/"))
-				time.Sleep(time.Second / 2)
-				w.Write([]byte("\010-"))
-				time.Sleep(time.Second / 2)
-				w.Write([]byte("|"))
-			}
-		}
-	}()
-
-	return func() {
-		cancel()
-		w.Write([]byte("\010\010\010")) //remove the loading chars
+	err = json.Unmarshal(b, &ptr)
+	if err != nil {
+		cmd.PrintErrln(err)
+		os.Exit(1)
 	}
 }
