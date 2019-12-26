@@ -112,13 +112,13 @@ func addCommand() *cobra.Command {
 					var ans string
 					err = survey.AskOne(&survey.Input{Message: k + ": ", Default: tmplDataFile,
 						Help: "The template data key " + k + " is missing please fill it."}, &ans)
-					if err == nil {
-						file.Data[k] = ans
-					} else {
-						println(err.Error())
+					if err != nil {
+						return err
 					}
+					file.Data[k] = ans
 				}
 			}
+			// re-try to install.
 			err = file.Install()
 
 			return err
