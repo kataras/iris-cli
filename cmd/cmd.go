@@ -35,6 +35,7 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 	rootCmd.AddCommand(newCommand())
 	rootCmd.AddCommand(runCommand())
 	rootCmd.AddCommand(addCommand())
+	rootCmd.AddCommand(checkCommand())
 
 	return rootCmd
 }

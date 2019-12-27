@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -17,7 +16,7 @@ import (
 type Project struct {
 	Name string `json:"name,omitempty" yaml:"Name" toml:"Name"` // e.g. starter-kit
 	// Remote.
-	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/project1"
+	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/starter-kit"
 	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "master"
 	// Local.
 	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
@@ -48,7 +47,7 @@ func New(name, repo string) *Project {
 }
 
 func Run(projectPath string, stdOut, stdErr io.Writer) error {
-	goRun := exec.Command("go", "run", ".")
+	goRun := utils.Command("go", "run", ".")
 	goRun.Dir = projectPath
 	goRun.Stdout = stdOut
 	goRun.Stderr = stdErr

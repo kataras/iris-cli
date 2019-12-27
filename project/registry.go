@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const DefaultRegistryEndpoint = "https://iris-go.com/cli/registry.json"
+const DefaultRegistryEndpoint = "https://raw.githubusercontent.com/kataras/iris-cli/master/registry.json"
 
 type Registry struct {
 	Endpoint      string                       `json:"endpoint,omitempty" yaml:"Endpoint" toml:"Endpoint"`
