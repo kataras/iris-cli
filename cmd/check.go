@@ -19,6 +19,10 @@ const irisRepo = "kataras/iris"
 // iris-cli check gopkg.in/yaml.v2
 // iris-cli check all
 func checkCommand() *cobra.Command { // maintenance
+	var (
+		forceUpdate bool
+	)
+
 	cmd := &cobra.Command{
 		Use:           "check",
 		Short:         "Check performs maintenance, if major, patch or minor update is available after confirmation, installs the latest Iris version or 'all'.",
@@ -103,14 +107,18 @@ func checkCommand() *cobra.Command { // maintenance
 {{- end}}`
 				var selectedUpdateModulesNameVersion []string
 
-				err := survey.AskOne(&survey.MultiSelect{
-					Message:  fmt.Sprintf("%d/%d modules are outdated, select to update", len(outdatedModules), totalModulesLen),
-					PageSize: 10,
-					Options:  updateModulesNameVersion,
-					Default:  updateModulesNameVersion,
-				}, &selectedUpdateModulesNameVersion)
-				if err != nil {
-					return err
+				if !forceUpdate {
+					err := survey.AskOne(&survey.MultiSelect{
+						Message:  fmt.Sprintf("%d/%d modules are outdated, select to update", len(outdatedModules), totalModulesLen),
+						PageSize: 10,
+						Options:  updateModulesNameVersion,
+						Default:  updateModulesNameVersion,
+					}, &selectedUpdateModulesNameVersion)
+					if err != nil {
+						return err
+					}
+				} else {
+					selectedUpdateModulesNameVersion = updateModulesNameVersion
 				}
 
 				succeedLen := 0
@@ -150,8 +158,8 @@ func checkCommand() *cobra.Command { // maintenance
 		},
 	}
 
-	// e.g. go list -u -m -json gopkg.in/yaml.v2
-	// cmd.Flags().BoolVar(&ci, "ci", ci, "Exit code will be 1 if ")
+	cmd.Flags().BoolVar(&forceUpdate, "force-update", forceUpdate, "--force-update to update any outdated modules without confirmation")
+
 	return cmd
 }
 
