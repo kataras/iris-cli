@@ -46,8 +46,7 @@ func checkCommand() *cobra.Command { // maintenance
 			goList := utils.Command("go", "list", "-u", "-m", "-json", modulePath)
 			out, err := goList.Output()
 			if err != nil {
-				err = fmt.Errorf("Module %s not found\n", modulePath)
-				return err
+				return fmt.Errorf("module <%s> not found", modulePath)
 			}
 
 			totalModulesLen := 0
@@ -111,19 +110,24 @@ func checkCommand() *cobra.Command { // maintenance
 					selectedUpdateModulesNameVersion = updateModulesNameVersion
 				}
 
+				if len(selectedUpdateModulesNameVersion) == 0 {
+					return nil
+				}
+
 				succeedLen := 0
 				var failedToUpdateNameVersion []string
 				for _, nameVersion := range selectedUpdateModulesNameVersion {
 					for _, m := range outdatedModules {
 						if m.String() == nameVersion {
 							goGet := utils.Command("go", "get", "-u", m.Path+"@"+m.Update.Version)
-							goGet.Stdout = cmd.OutOrStdout()
-							if gErr := goGet.Run(); gErr != nil {
+							out, gErr := goGet.CombinedOutput()
+							if gErr != nil {
 								failedToUpdateNameVersion = append(failedToUpdateNameVersion, nameVersion)
+								errStr := fmt.Sprintf("[%d] %s:\n%v", len(failedToUpdateNameVersion), nameVersion, string(out))
 								if err != nil {
-									err = fmt.Errorf("%v\n%v", err, nameVersion)
+									err = fmt.Errorf("%v\n%s", err, errStr)
 								} else {
-									err = fmt.Errorf(nameVersion)
+									err = fmt.Errorf(errStr)
 								}
 
 								continue // do not fail.

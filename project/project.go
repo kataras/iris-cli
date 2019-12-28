@@ -21,12 +21,24 @@ type Project struct {
 	// Local.
 	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
-
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post Installation.
 	// InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
+	// Think more over these:
+	// PostCommands map[string][]string `json:"post_commands" yaml:"PostCommands" toml:"PostCommands"` // commands to run per Operating System (runtime.GOOS) or "all" or "*" or empty, after Install but before Exclude, e.g. npm run build.
+	// Run          map[string]string
+	// Exclude      string `json:"exclude" yaml:"Exclude" toml:"Exclude"` // filepath glob pattern to remove any unnecessary files after unzip.
 }
+
+/*
+TODO:
+1. Build: After Install, before Exclude. Run file, e.g. Makefile or .bat or .sh based on operating system or "all", "*", "".
+1. Post: After Install, before Exclude. Used on `run` command, not `new` alone. Value is filepath, default will be "run.bat" on windows and "run.sh" on unix.
+If file exist then execute the file;
+if Makefile then execute on linux with make, otherwise just execute ./ based on OS, or "all" or "*" or "" map key.\
+If file does not exist then just run `go run $file` as we do now.
+*/
 
 func New(name, repo string) *Project {
 	name, version := utils.SplitNameVersion(name) // i.e. github.com/author/project@v12
