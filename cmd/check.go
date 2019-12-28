@@ -44,18 +44,9 @@ func checkCommand() *cobra.Command { // maintenance
 			} // it can be "all".
 
 			goList := utils.Command("go", "list", "-u", "-m", "-json", modulePath)
-			// goList.Stderr = cmd.ErrOrStderr()
-			// stdoutPipe, err := goList.StdoutPipe()
-			// if err != nil {
-			// 	return err
-			// }
-
-			// err = goList.Start()
-			// if err != nil {
-			// 	return err
-			// }
 			out, err := goList.Output()
 			if err != nil {
+				err = fmt.Errorf("Module %s not found\n", modulePath)
 				return err
 			}
 
@@ -80,7 +71,6 @@ func checkCommand() *cobra.Command { // maintenance
 				if m.Update != nil {
 					outdatedModules = append(outdatedModules, m)
 				}
-
 			}
 
 			updateModulesNameVersion := make([]string, len(outdatedModules))

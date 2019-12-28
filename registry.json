@@ -1,5 +1,5 @@
 {
     "projects": {
-        
+        "svelte": "iris-contrib/svelte-template"
     }
 }

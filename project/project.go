@@ -69,6 +69,8 @@ func (p *Project) download() ([]byte, error) {
 		p.Version = "master"
 	}
 
+	p.Repo = strings.TrimLeft(p.Repo, "https://github.com/")
+
 	zipURL := fmt.Sprintf("https://github.com/%s/archive/%s.zip", p.Repo, p.Version) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
 	r, err := utils.DownloadReader(zipURL, nil)
 	if err != nil {
