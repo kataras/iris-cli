@@ -7,7 +7,9 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/kataras/iris-cli/utils"
@@ -23,22 +25,7 @@ type Project struct {
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
-	// Post Installation.
-	// InstalledPath string `json:"-" yaml:"-" toml:"-"` // the dest + name filepath if installed, if empty then it is not installed yet.
-	// Think more over these:
-	// PostCommands map[string][]string `json:"post_commands" yaml:"PostCommands" toml:"PostCommands"` // commands to run per Operating System (runtime.GOOS) or "all" or "*" or empty, after Install but before Exclude, e.g. npm run build.
-	// Run          map[string]string
-	// Exclude      string `json:"exclude" yaml:"Exclude" toml:"Exclude"` // filepath glob pattern to remove any unnecessary files after unzip.
 }
-
-/*
-TODO:
-1. Build: After Install, before Exclude. Run file, e.g. Makefile or .bat or .sh based on operating system or "all", "*", "".
-1. Post: After Install, before Exclude. Used on `run` command, not `new` alone. Value is filepath, default will be "run.bat" on windows and "run.sh" on unix.
-If file exist then execute the file;
-if Makefile then execute on linux with make, otherwise just execute ./ based on OS, or "all" or "*" or "" map key.\
-If file does not exist then just run `go run $file` as we do now.
-*/
 
 func New(name, repo string) *Project {
 	name, version := utils.SplitNameVersion(name) // i.e. github.com/author/project@v12
@@ -59,11 +46,48 @@ func New(name, repo string) *Project {
 }
 
 func Run(projectPath string, stdOut, stdErr io.Writer) error {
-	goRun := utils.Command("go", "run", ".")
-	goRun.Dir = projectPath
-	goRun.Stdout = stdOut
-	goRun.Stderr = stdErr
-	return goRun.Run()
+	var runCmd *exec.Cmd
+
+	runScriptExt := ".bat"
+	if runtime.GOOS != "windows" {
+		runScriptExt = ".sh"
+	}
+
+	if runScriptPath := filepath.Join(projectPath, "run"+runScriptExt); utils.Exists(runScriptPath) {
+		// run.bat or run.sh exists
+		runCmd = utils.Command(runScriptPath)
+	} else {
+		// else check for Makefile(make) or Makefile.win (nmake).
+		makefilePath := filepath.Join(projectPath, "Makefile")
+		makefileExists := utils.Exists(makefilePath)
+		if !makefileExists {
+			makefilePath += ".win"
+			makefileExists = utils.Exists(makefilePath)
+		}
+
+		if makefileExists {
+			makeBin := ""
+
+			if f, err := exec.LookPath("make"); err == nil {
+				makeBin = f
+			} else if f, err = exec.LookPath("nmake"); err == nil {
+				makeBin = f
+			}
+
+			if makeBin != "" {
+				runCmd = utils.Command(makeBin, "run")
+			}
+		}
+	}
+
+	if runCmd == nil {
+		runCmd = utils.Command("go", "run", ".")
+	}
+
+	runCmd.Dir = projectPath
+	runCmd.Stdout = stdOut
+	runCmd.Stderr = stdErr
+	return runCmd.Run()
 }
 
 func (p *Project) Install() error {
@@ -80,8 +104,6 @@ func (p *Project) download() ([]byte, error) {
 	if p.Version == "latest" {
 		p.Version = "master"
 	}
-
-	p.Repo = strings.TrimLeft(p.Repo, "https://github.com/")
 
 	zipURL := fmt.Sprintf("https://github.com/%s/archive/%s.zip", p.Repo, p.Version) // e.g. https://github.com/kataras/iris-cli/archive/master.zip
 	r, err := utils.DownloadReader(zipURL, nil)
