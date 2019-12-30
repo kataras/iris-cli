@@ -3,6 +3,7 @@ package project
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,6 +26,10 @@ type Project struct {
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
+	// Post installation.
+	// absolute path of the files and directories installed, because the folder may be not empty
+	// and when installation fails we don't want to delete any user-defined files, just the project's ones.
+	Files []string
 }
 
 func New(name, repo string) *Project {
@@ -48,43 +53,47 @@ func New(name, repo string) *Project {
 func Run(projectPath string, stdOut, stdErr io.Writer) error {
 	var runCmd *exec.Cmd
 
-	runScriptExt := ".bat"
-	if runtime.GOOS != "windows" {
-		runScriptExt = ".sh"
-	}
+	if utils.IsDir(projectPath) {
+		runScriptExt := ".bat"
+		if runtime.GOOS != "windows" {
+			runScriptExt = ".sh"
+		}
 
-	if runScriptPath := filepath.Join(projectPath, "run"+runScriptExt); utils.Exists(runScriptPath) {
-		// run.bat or run.sh exists
-		runCmd = utils.Command(runScriptPath)
+		if runScriptPath := filepath.Join(projectPath, "run"+runScriptExt); utils.Exists(runScriptPath) {
+			// run.bat or run.sh exists
+			runCmd = utils.Command(runScriptPath)
+		} else {
+			// else check for Makefile(make) or Makefile.win (nmake).
+			makefilePath := filepath.Join(projectPath, "Makefile")
+			makefileExists := utils.Exists(makefilePath)
+			if !makefileExists {
+				makefilePath += ".win"
+				makefileExists = utils.Exists(makefilePath)
+			}
+
+			if makefileExists {
+				makeBin := ""
+
+				if f, err := exec.LookPath("make"); err == nil {
+					makeBin = f
+				} else if f, err = exec.LookPath("nmake"); err == nil {
+					makeBin = f
+				}
+
+				if makeBin != "" {
+					runCmd = utils.Command(makeBin, "run")
+				}
+			}
+		}
+
+		if runCmd == nil {
+			runCmd = utils.Command("go", "run", ".")
+		}
+		runCmd.Dir = projectPath
 	} else {
-		// else check for Makefile(make) or Makefile.win (nmake).
-		makefilePath := filepath.Join(projectPath, "Makefile")
-		makefileExists := utils.Exists(makefilePath)
-		if !makefileExists {
-			makefilePath += ".win"
-			makefileExists = utils.Exists(makefilePath)
-		}
-
-		if makefileExists {
-			makeBin := ""
-
-			if f, err := exec.LookPath("make"); err == nil {
-				makeBin = f
-			} else if f, err = exec.LookPath("nmake"); err == nil {
-				makeBin = f
-			}
-
-			if makeBin != "" {
-				runCmd = utils.Command(makeBin, "run")
-			}
-		}
+		runCmd = utils.Command("go", "run", projectPath)
 	}
 
-	if runCmd == nil {
-		runCmd = utils.Command("go", "run", ".")
-	}
-
-	runCmd.Dir = projectPath
 	runCmd.Stdout = stdOut
 	runCmd.Stderr = stdErr
 	return runCmd.Run()
@@ -96,7 +105,24 @@ func (p *Project) Install() error {
 		return err
 	}
 
-	return p.unzip(b)
+	defer func() {
+		if err != nil {
+			// Remove any installed files on errors.
+			err = p.Unistall()
+		}
+	}()
+
+	err = p.unzip(b)
+	if err != nil {
+		return err
+	}
+
+	err = p.build()
+	if err != nil {
+		return err
+	}
+
+	return err
 }
 
 func (p *Project) download() ([]byte, error) {
@@ -192,6 +218,8 @@ func (p *Project) unzip(body []byte) error {
 			return fmt.Errorf("illegal path: %s", fpath)
 		}
 
+		p.Files = append(p.Files, fpath)
+
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(fpath, os.ModePerm)
 			continue
@@ -228,13 +256,58 @@ func (p *Project) unzip(body []byte) error {
 		}
 	}
 
-	// Don't use Module name for path because it may contains a version suffix.
-	// newPath := filepath.Join(dest, p.Name)
-	// os.RemoveAll(newPath)
-	// err = os.Rename(filepath.Join(dest, compressedRootFolder), newPath)
-	// if err == nil {
-	// 	p.InstalledPath = newPath
-	// }
+	return nil
+}
+
+const nodeModulesName = "node_modules"
+
+func (p *Project) build() error {
+	files, err := utils.FindMatches(p.Dest, "package.json")
+	if err != nil {
+		return err
+	}
+
+	if len(files) == 0 {
+		return nil
+	}
+
+	npmBin, err := exec.LookPath("npm")
+	if err != nil {
+		return fmt.Errorf("project %s requires nodejs to be installed", p.Name)
+	}
+
+	for _, f := range files {
+		// check if not exist, if exists then do nothing otherwise run "npm install" automatically.
+		dir := filepath.Dir(f)
+		if strings.Contains(dir, nodeModulesName) {
+			// it is a sub module which is already installed.
+			continue
+		}
+
+		nodeModulesFolder := filepath.Join(dir, nodeModulesName)
+		if utils.Exists(nodeModulesFolder) {
+			continue
+		}
+
+		cmd := utils.Command(npmBin, "install")
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return errors.New(string(out))
+		}
+	}
 
 	return nil
+}
+
+// Unistall removes all project-associated files.
+// it cannot run on a new session(maybe a TODO); the "p.Files" should be filles by `Install`.
+func (p *Project) Unistall() (err error) {
+	for _, f := range p.Files {
+		if err = os.RemoveAll(f); err != nil {
+			return
+		}
+	}
+
+	return
 }
