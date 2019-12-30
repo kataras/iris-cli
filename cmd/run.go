@@ -17,11 +17,11 @@ func runCommand() *cobra.Command {
 		Short:         "Run starts a project.",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return fmt.Errorf("argument path to run is required")
+			name := "." // current directory.
+			if len(args) > 0 {
+				name = args[0]
 			}
 
-			name := args[0]
 			projectPath, err := filepath.Abs(name)
 			if err != nil {
 				return err
