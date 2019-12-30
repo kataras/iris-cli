@@ -3,6 +3,7 @@ package project
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -261,6 +262,11 @@ func (p *Project) unzip(body []byte) error {
 
 const nodeModulesName = "node_modules"
 
+type packageJSON struct {
+	Name    string            `json:"name"`
+	Scripts map[string]string `json:"Scripts"`
+}
+
 func (p *Project) build() error {
 	files, err := utils.FindMatches(p.Dest, "package.json")
 	if err != nil {
@@ -273,7 +279,7 @@ func (p *Project) build() error {
 
 	npmBin, err := exec.LookPath("npm")
 	if err != nil {
-		return fmt.Errorf("project %s requires nodejs to be installed", p.Name)
+		return fmt.Errorf("project <%s> requires nodejs to be installed", p.Name)
 	}
 
 	for _, f := range files {
@@ -289,11 +295,31 @@ func (p *Project) build() error {
 			continue
 		}
 
-		cmd := utils.Command(npmBin, "install")
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
+		installCmd := utils.Command(npmBin, "install")
+		installCmd.Dir = dir
+		out, err := installCmd.CombinedOutput()
 		if err != nil {
 			return errors.New(string(out))
+		}
+
+		b, err := ioutil.ReadFile(f)
+		if err != nil {
+			return fmt.Errorf("build: package.json: %w", err)
+		}
+		var v packageJSON
+		if err = json.Unmarshal(b, &v); err != nil {
+			return fmt.Errorf("build: package.json: %w", err)
+		}
+
+		if _, ok := v.Scripts["build"]; ok {
+			buildCmd := utils.Command(npmBin, "run", "build")
+			buildCmd.Dir = dir
+			out, err := buildCmd.CombinedOutput()
+			if err != nil {
+				return errors.New(string(out))
+			}
+			// TODO: do the same on `Run` for "run" too, if
+			// no Makefile/win: run or run.bat/sh found.
 		}
 	}
 
