@@ -3,6 +3,7 @@ package project
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +31,7 @@ type Project struct {
 	// Post installation.
 	// absolute path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files, just the project's ones.
-	Files []string
+	Files []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
 }
 
 func New(name, repo string) *Project {
@@ -51,45 +52,103 @@ func New(name, repo string) *Project {
 	}
 }
 
+const projectFilename = ".iris"
+
+func init() {
+	gob.RegisterName("Project", new(Project))
+}
+
+func (p *Project) SaveToDisk() error {
+	projectFile := filepath.Join(p.Dest, projectFilename)
+
+	outFile, err := os.OpenFile(projectFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	enc := gob.NewEncoder(outFile)
+	return enc.Encode(p)
+}
+
+var ErrProjectFileNotExist = errors.New("project file does not exist")
+
+func LoadFromDisk(projectPath string) (*Project, error) {
+	if !utils.IsDir(projectPath) {
+		projectPath = filepath.Dir(projectPath)
+	}
+
+	projectFile := filepath.Join(projectPath, projectFilename)
+	if !utils.Exists(projectFile) {
+		return nil, ErrProjectFileNotExist
+	}
+
+	inFile, err := os.OpenFile(projectFile, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		return nil, err
+	}
+
+	p := new(Project)
+	dec := gob.NewDecoder(inFile)
+	err = dec.Decode(p)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+const (
+	actionRun   = "run"
+	actionBuild = "build"
+)
+
+func getActionCommand(path string, action string) *exec.Cmd {
+	if !utils.IsDir(path) {
+		return nil
+	}
+
+	runScriptExt := ".bat"
+	if runtime.GOOS != "windows" {
+		runScriptExt = ".sh"
+	}
+
+	if runScriptPath := filepath.Join(path, action+runScriptExt); utils.Exists(runScriptPath) {
+		// run.bat or run.sh exists
+		return utils.Command(runScriptPath)
+	}
+	// else check for Makefile(make) or Makefile.win (nmake).
+	makefilePath := filepath.Join(path, "Makefile")
+	makefileExists := utils.Exists(makefilePath)
+	if !makefileExists {
+		makefilePath += ".win"
+		makefileExists = utils.Exists(makefilePath)
+	}
+
+	if makefileExists {
+		makeBin := ""
+
+		if f, err := exec.LookPath("make"); err == nil {
+			makeBin = f
+		} else if f, err = exec.LookPath("nmake"); err == nil {
+			makeBin = f
+		}
+
+		if makeBin != "" {
+			return utils.Command(makeBin, action)
+		}
+	}
+
+	return nil
+}
+
 func Run(projectPath string, stdOut, stdErr io.Writer) error {
 	var runCmd *exec.Cmd
 
 	if utils.IsDir(projectPath) {
-		runScriptExt := ".bat"
-		if runtime.GOOS != "windows" {
-			runScriptExt = ".sh"
-		}
-
-		if runScriptPath := filepath.Join(projectPath, "run"+runScriptExt); utils.Exists(runScriptPath) {
-			// run.bat or run.sh exists
-			runCmd = utils.Command(runScriptPath)
-		} else {
-			// else check for Makefile(make) or Makefile.win (nmake).
-			makefilePath := filepath.Join(projectPath, "Makefile")
-			makefileExists := utils.Exists(makefilePath)
-			if !makefileExists {
-				makefilePath += ".win"
-				makefileExists = utils.Exists(makefilePath)
-			}
-
-			if makefileExists {
-				makeBin := ""
-
-				if f, err := exec.LookPath("make"); err == nil {
-					makeBin = f
-				} else if f, err = exec.LookPath("nmake"); err == nil {
-					makeBin = f
-				}
-
-				if makeBin != "" {
-					runCmd = utils.Command(makeBin, "run")
-				}
-			}
-		}
-
-		if runCmd == nil {
+		if runCmd = getActionCommand(projectPath, actionRun); runCmd == nil {
 			runCmd = utils.Command("go", "run", ".")
 		}
+
 		runCmd.Dir = projectPath
 	} else {
 		runCmd = utils.Command("go", "run", projectPath)
@@ -123,7 +182,7 @@ func (p *Project) Install() error {
 		return err
 	}
 
-	return err
+	return p.SaveToDisk()
 }
 
 func (p *Project) download() ([]byte, error) {
@@ -263,11 +322,18 @@ func (p *Project) unzip(body []byte) error {
 const nodeModulesName = "node_modules"
 
 type packageJSON struct {
-	Name    string            `json:"name"`
-	Scripts map[string]string `json:"Scripts"`
+	Scripts map[string]string `json:"scripts"`
 }
 
 func (p *Project) build() error {
+	// Try to build with "make", "nmake" or "build.bat", "build.sh".
+	buildCmd := getActionCommand(p.Dest, actionBuild)
+	if buildCmd != nil {
+		return runCmd(buildCmd, p.Dest)
+	}
+
+	// Else, locate any package.json project files and
+	// npm install and if scripts: "build" then npm run build.
 	files, err := utils.FindMatches(p.Dest, "package.json")
 	if err != nil {
 		return err
@@ -296,30 +362,26 @@ func (p *Project) build() error {
 		}
 
 		installCmd := utils.Command(npmBin, "install")
-		installCmd.Dir = dir
-		out, err := installCmd.CombinedOutput()
-		if err != nil {
-			return errors.New(string(out))
+		if err = runCmd(installCmd, dir); err != nil {
+			return err
 		}
 
 		b, err := ioutil.ReadFile(f)
 		if err != nil {
-			return fmt.Errorf("build: package.json: %w", err)
-		}
-		var v packageJSON
-		if err = json.Unmarshal(b, &v); err != nil {
-			return fmt.Errorf("build: package.json: %w", err)
+			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
 		}
 
-		if _, ok := v.Scripts["build"]; ok {
-			buildCmd := utils.Command(npmBin, "run", "build")
-			buildCmd.Dir = dir
-			out, err := buildCmd.CombinedOutput()
-			if err != nil {
-				return errors.New(string(out))
+		// Check if package.json contains a build action and run it.
+		var v packageJSON
+		if err = json.Unmarshal(b, &v); err != nil {
+			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
+		}
+
+		if _, ok := v.Scripts[actionBuild]; ok {
+			buildCmd := utils.Command(npmBin, "run", actionBuild)
+			if err = runCmd(buildCmd, dir); err != nil {
+				return err
 			}
-			// TODO: do the same on `Run` for "run" too, if
-			// no Makefile/win: run or run.bat/sh found.
 		}
 	}
 
@@ -336,4 +398,17 @@ func (p *Project) Unistall() (err error) {
 	}
 
 	return
+}
+
+func runCmd(cmd *exec.Cmd, dir string) error {
+	if dir != "" {
+		cmd.Dir = dir
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.New(string(out))
+	}
+
+	return nil
 }
