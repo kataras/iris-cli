@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 func init() {
@@ -105,24 +107,39 @@ func Dest(dest string) string {
 
 // FindMatches find all matches of a "pattern" reclusively.
 // Ordered by parent dir.
-func FindMatches(rootDir, pattern string) ([]string, error) {
+func FindMatches(rootDir, pattern string, listDirectories bool) ([]string, error) {
 	var matches []string
+	matchAny := pattern == "*"
+
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if info.IsDir() {
+			if !listDirectories { // it's a directory but we don't want to list them.
+				return nil
+			}
+		} else if listDirectories { // list only directories but this is not a directory.
 			return nil
 		}
 
-		matched, err := filepath.Match(pattern, filepath.Base(path))
-		if err != nil {
-			return err
+		matched := matchAny
+		if !matchAny {
+			name := path
+			if !listDirectories {
+				name = filepath.Base(name)
+			}
+
+			matched, err = filepath.Match(pattern, name)
+			if err != nil {
+				return err
+			}
 		}
 
 		if matched {
 			matches = append(matches, path)
+
 		}
 
 		return nil
@@ -135,4 +152,61 @@ func FindMatches(rootDir, pattern string) ([]string, error) {
 	})
 
 	return matches, err
+}
+
+const (
+	FileCreated = fsnotify.Create
+)
+
+type WatchFileEvents map[fsnotify.Op]func(filename string)
+
+func WatchFileChanges(rootDir string, events WatchFileEvents) (*fsnotify.Watcher, error) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+
+	doneCh := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				for op, cb := range events {
+					if event.Op&op == op {
+						cb(event.Name)
+					}
+				}
+			case <-doneCh:
+				if watcher != nil {
+					watcher.Close()
+				}
+				return
+			}
+		}
+	}()
+
+	directoriesToWatch, err := FindMatches(rootDir, "*", true) // including rootDir itself.
+	if err != nil {
+		close(doneCh)
+		return nil, err
+	}
+
+	for _, dir := range directoriesToWatch {
+		/* e.g.
+		watch: C:\Users\kataras\Desktop\myproject
+		watch: C:\Users\kataras\Desktop\myproject\app
+		watch: C:\Users\kataras\Desktop\myproject\app\public
+		watch: C:\Users\kataras\Desktop\myproject\app\src
+		*/
+		if err = watcher.Add(dir); err != nil {
+			close(doneCh)
+			return nil, err
+		}
+	}
+
+	return watcher, nil
 }

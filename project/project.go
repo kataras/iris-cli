@@ -29,9 +29,11 @@ type Project struct {
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post installation.
-	// absolute path of the files and directories installed, because the folder may be not empty
-	// and when installation fails we don't want to delete any user-defined files, just the project's ones.
-	Files []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
+	// Absolute path of the files and directories installed, because the folder may be not empty
+	// and when installation fails we don't want to delete any user-defined files,
+	// just the project's ones before build.
+	Files      []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
+	BuildFiles []string `json:"build_files"` // New directories and files that are created by build (makefile, build script, npm install & npm run build).
 }
 
 func New(name, repo string) *Project {
@@ -65,6 +67,7 @@ func (p *Project) SaveToDisk() error {
 	if err != nil {
 		return err
 	}
+	defer outFile.Close()
 
 	enc := gob.NewEncoder(outFile)
 	return enc.Encode(p)
@@ -86,6 +89,7 @@ func LoadFromDisk(projectPath string) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer inFile.Close()
 
 	p := new(Project)
 	dec := gob.NewDecoder(inFile)
@@ -334,7 +338,7 @@ func (p *Project) build() error {
 
 	// Else, locate any package.json project files and
 	// npm install and if scripts: "build" then npm run build.
-	files, err := utils.FindMatches(p.Dest, "package.json")
+	files, err := utils.FindMatches(p.Dest, "package.json", false)
 	if err != nil {
 		return err
 	}
@@ -347,6 +351,23 @@ func (p *Project) build() error {
 	if err != nil {
 		return fmt.Errorf("project <%s> requires nodejs to be installed", p.Name)
 	}
+
+	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreated: func(filename string) {
+		/* e.g.
+		build file: C:\Users\kataras\Desktop\myproject\app\node_modules
+		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json.545868579
+		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json
+		build file: C:\Users\kataras\Desktop\myproject\app\public\build
+		*/
+		p.BuildFiles = append(p.BuildFiles, filename)
+	}})
+
+	if err != nil {
+		return fmt.Errorf("watcher <%s>: %v", p.Dest, err)
+	}
+
+	defer p.SaveToDisk()
+	defer watcher.Close()
 
 	for _, f := range files {
 		// check if not exist, if exists then do nothing otherwise run "npm install" automatically.
@@ -388,16 +409,33 @@ func (p *Project) build() error {
 	return nil
 }
 
+// Clean removes all project's build-only associated files.
+func (p *Project) Clean() (err error) {
+	for _, f := range p.BuildFiles {
+		if err = os.RemoveAll(f); err != nil {
+			return
+		}
+	}
+
+	p.BuildFiles = p.BuildFiles[0:0]
+	return p.SaveToDisk()
+}
+
 // Unistall removes all project-associated files.
-// it cannot run on a new session(maybe a TODO); the "p.Files" should be filles by `Install`.
 func (p *Project) Unistall() (err error) {
+	if err = p.Clean(); err != nil {
+		return
+	}
+
 	for _, f := range p.Files {
 		if err = os.RemoveAll(f); err != nil {
 			return
 		}
 	}
 
-	return
+	// remove project file too.
+	projectFile := filepath.Join(p.Dest, projectFilename)
+	return os.Remove(projectFile)
 }
 
 func runCmd(cmd *exec.Cmd, dir string) error {

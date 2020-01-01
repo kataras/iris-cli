@@ -9,10 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func cleanCommand() *cobra.Command {
+func unistallCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "clean",
-		Short:         "Clean a project after install or build.",
+		Use:           "unistall",
+		Short:         "Removes all project files",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := "." // current directory.
@@ -34,7 +34,7 @@ func cleanCommand() *cobra.Command {
 				return err
 			}
 
-			return p.Clean()
+			return p.Unistall()
 		},
 	}
 

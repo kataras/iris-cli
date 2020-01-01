@@ -80,7 +80,7 @@ func (r *Registry) Load() error {
 }
 
 // ErrProjectNotExists can be return as error value from the `Registry.Install` method.
-var ErrProjectNotExists = fmt.Errorf("project not exists")
+var ErrProjectNotExists = fmt.Errorf("project does not exist")
 
 // Exists reports whether a project with "name" exists in the registry.
 func (r *Registry) Exists(name string) (string, bool) {
