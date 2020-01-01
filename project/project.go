@@ -75,7 +75,16 @@ func (p *Project) SaveToDisk() error {
 
 var ErrProjectFileNotExist = errors.New("project file does not exist")
 
-func LoadFromDisk(projectPath string) (*Project, error) {
+func LoadFromDisk(path string) (*Project, error) {
+	projectPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !utils.Exists(projectPath) {
+		return nil, ErrProjectNotExists
+	}
+
 	if !utils.IsDir(projectPath) {
 		projectPath = filepath.Dir(projectPath)
 	}
@@ -101,66 +110,8 @@ func LoadFromDisk(projectPath string) (*Project, error) {
 	return p, nil
 }
 
-const (
-	actionRun   = "run"
-	actionBuild = "build"
-)
-
-func getActionCommand(path string, action string) *exec.Cmd {
-	if !utils.IsDir(path) {
-		return nil
-	}
-
-	runScriptExt := ".bat"
-	if runtime.GOOS != "windows" {
-		runScriptExt = ".sh"
-	}
-
-	if runScriptPath := filepath.Join(path, action+runScriptExt); utils.Exists(runScriptPath) {
-		// run.bat or run.sh exists
-		return utils.Command(runScriptPath)
-	}
-	// else check for Makefile(make) or Makefile.win (nmake).
-	makefilePath := filepath.Join(path, "Makefile")
-	makefileExists := utils.Exists(makefilePath)
-	if !makefileExists {
-		makefilePath += ".win"
-		makefileExists = utils.Exists(makefilePath)
-	}
-
-	if makefileExists {
-		makeBin := ""
-
-		if f, err := exec.LookPath("make"); err == nil {
-			makeBin = f
-		} else if f, err = exec.LookPath("nmake"); err == nil {
-			makeBin = f
-		}
-
-		if makeBin != "" {
-			return utils.Command(makeBin, action)
-		}
-	}
-
-	return nil
-}
-
-func Run(projectPath string, stdOut, stdErr io.Writer) error {
-	var runCmd *exec.Cmd
-
-	if utils.IsDir(projectPath) {
-		if runCmd = getActionCommand(projectPath, actionRun); runCmd == nil {
-			runCmd = utils.Command("go", "run", ".")
-		}
-
-		runCmd.Dir = projectPath
-	} else {
-		runCmd = utils.Command("go", "run", projectPath)
-	}
-
-	runCmd.Stdout = stdOut
-	runCmd.Stderr = stdErr
-	return runCmd.Run()
+func (p *Project) WasBuilt() bool {
+	return len(p.BuildFiles) > 0
 }
 
 func (p *Project) Install() error {
@@ -181,10 +132,15 @@ func (p *Project) Install() error {
 		return err
 	}
 
-	err = p.build()
-	if err != nil {
-		return err
-	}
+	// Do not build on Install,
+	// Build is another step
+	// and it runs automatically on Run if was not built
+	// (TODO: or source code changed).
+	//
+	// err = p.build()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return p.SaveToDisk()
 }
@@ -323,6 +279,26 @@ func (p *Project) unzip(body []byte) error {
 	return nil
 }
 
+func (p *Project) Run(stdOut, stdErr io.Writer) error {
+	if !p.WasBuilt() {
+		// Build first if was not built already.
+		if err := p.build(); err != nil {
+			return err
+		}
+	}
+
+	runCmd := getActionCommand(p.Dest, actionRun)
+	if runCmd == nil {
+		runCmd = utils.Command("go", "run", ".")
+	}
+
+	runCmd.Dir = p.Dest
+	runCmd.Stdout = stdOut
+	runCmd.Stderr = stdErr
+
+	return runCmd.Run()
+}
+
 const nodeModulesName = "node_modules"
 
 type packageJSON struct {
@@ -330,6 +306,24 @@ type packageJSON struct {
 }
 
 func (p *Project) build() error {
+	// Add any new directories and files to build files and save the project on built.
+	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreated: func(filename string) {
+		/* e.g.
+		build file: C:\Users\kataras\Desktop\myproject\app\node_modules
+		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json.545868579
+		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json
+		build file: C:\Users\kataras\Desktop\myproject\app\public\build
+		*/
+		p.BuildFiles = append(p.BuildFiles, filename)
+	}})
+
+	if err != nil {
+		return fmt.Errorf("watcher <%s>: %v", p.Dest, err)
+	}
+
+	defer p.SaveToDisk()
+	defer watcher.Close()
+
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
 	buildCmd := getActionCommand(p.Dest, actionBuild)
 	if buildCmd != nil {
@@ -351,23 +345,6 @@ func (p *Project) build() error {
 	if err != nil {
 		return fmt.Errorf("project <%s> requires nodejs to be installed", p.Name)
 	}
-
-	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreated: func(filename string) {
-		/* e.g.
-		build file: C:\Users\kataras\Desktop\myproject\app\node_modules
-		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json.545868579
-		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json
-		build file: C:\Users\kataras\Desktop\myproject\app\public\build
-		*/
-		p.BuildFiles = append(p.BuildFiles, filename)
-	}})
-
-	if err != nil {
-		return fmt.Errorf("watcher <%s>: %v", p.Dest, err)
-	}
-
-	defer p.SaveToDisk()
-	defer watcher.Close()
 
 	for _, f := range files {
 		// check if not exist, if exists then do nothing otherwise run "npm install" automatically.
@@ -433,9 +410,57 @@ func (p *Project) Unistall() (err error) {
 		}
 	}
 
+	// remove go.sum (which can be automatically generated if not existed because of a remote project with .gitignore).
+	goSumFile := filepath.Join(p.Dest, "go.sum")
+	os.Remove(goSumFile) // ignore error.
+
 	// remove project file too.
 	projectFile := filepath.Join(p.Dest, projectFilename)
 	return os.Remove(projectFile)
+}
+
+const (
+	actionRun   = "run"
+	actionBuild = "build"
+)
+
+func getActionCommand(path string, action string) *exec.Cmd {
+	if !utils.IsDir(path) {
+		return nil
+	}
+
+	runScriptExt := ".bat"
+	if runtime.GOOS != "windows" {
+		runScriptExt = ".sh"
+	}
+
+	if runScriptPath := filepath.Join(path, action+runScriptExt); utils.Exists(runScriptPath) {
+		// run.bat or run.sh exists
+		return utils.Command(runScriptPath)
+	}
+	// else check for Makefile(make) or Makefile.win (nmake).
+	makefilePath := filepath.Join(path, "Makefile")
+	makefileExists := utils.Exists(makefilePath)
+	if !makefileExists {
+		makefilePath += ".win"
+		makefileExists = utils.Exists(makefilePath)
+	}
+
+	if makefileExists {
+		makeBin := ""
+
+		if f, err := exec.LookPath("make"); err == nil {
+			makeBin = f
+		} else if f, err = exec.LookPath("nmake"); err == nil {
+			makeBin = f
+		}
+
+		if makeBin != "" {
+			return utils.Command(makeBin, action)
+		}
+	}
+
+	return nil
 }
 
 func runCmd(cmd *exec.Cmd, dir string) error {

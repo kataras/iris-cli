@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/AlecAivazis/survey/v2"
 	"io"
 	"time"
 
 	"github.com/kataras/iris-cli/utils"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 )
 
