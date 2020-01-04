@@ -66,7 +66,7 @@ func Exists(path string) bool {
 		}
 	}
 
-	return false
+	return true
 }
 
 // IsDir reports whether a "path" is a filesystem directory.
