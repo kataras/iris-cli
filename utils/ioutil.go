@@ -56,14 +56,12 @@ func (r multiCloser) Close() (err error) {
 // Exists tries to report whether the local physical "path" exists.
 func Exists(path string) bool {
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-
 		if os.IsExist(err) {
 			// It exists but it can cause other errors when reading but we don't care here.
 			return true
 		}
+
+		return false
 	}
 
 	return true
