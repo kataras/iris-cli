@@ -139,23 +139,26 @@ func FindMatches(rootDir, pattern string, listDirectories bool) ([]string, error
 
 		if matched {
 			matches = append(matches, path)
-
 		}
 
 		return nil
 	})
 
-	sort.Slice(matches, func(i, j int) bool {
-		ni := strings.Count(matches[i], string(os.PathSeparator))
-		nj := strings.Count(matches[j], string(os.PathSeparator))
-		return ni < nj
-	})
+	if len(matches) > 1 {
+		sort.Slice(matches, func(i, j int) bool {
+			ni := strings.Count(matches[i], string(os.PathSeparator))
+			nj := strings.Count(matches[j], string(os.PathSeparator))
+			return ni < nj
+		})
+	}
 
 	return matches, err
 }
 
 const (
-	FileCreated = fsnotify.Create
+	FileCreate = fsnotify.Create
+	FileWrite  = fsnotify.Write
+	FileRemove = fsnotify.Remove
 )
 
 type WatchFileEvents map[fsnotify.Op]func(filename string)

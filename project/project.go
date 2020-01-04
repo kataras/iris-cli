@@ -3,6 +3,7 @@ package project
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/md5"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -33,7 +34,9 @@ type Project struct {
 	// and when installation fails we don't want to delete any user-defined files,
 	// just the project's ones before build.
 	Files      []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
-	BuildFiles []string `json:"build_files"` // New directories and files that are created by build (makefile, build script, npm install & npm run build).
+	BuildFiles []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files that are created by build (makefile, build script, npm install & npm run build).
+
+	MD5PackageJSON []byte `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 }
 
 func New(name, repo string) *Project {
@@ -55,10 +58,6 @@ func New(name, repo string) *Project {
 }
 
 const projectFilename = ".iris"
-
-func init() {
-	gob.RegisterName("Project", new(Project))
-}
 
 func (p *Project) SaveToDisk() error {
 	projectFile := filepath.Join(p.Dest, projectFilename)
@@ -108,10 +107,6 @@ func LoadFromDisk(path string) (*Project, error) {
 	}
 
 	return p, nil
-}
-
-func (p *Project) WasBuilt() bool {
-	return len(p.BuildFiles) > 0
 }
 
 func (p *Project) Install() error {
@@ -238,9 +233,9 @@ func (p *Project) unzip(body []byte) error {
 			return fmt.Errorf("illegal path: %s", fpath)
 		}
 
-		p.Files = append(p.Files, fpath)
-
 		if f.FileInfo().IsDir() {
+			p.Files = append(p.Files, fpath)
+
 			os.MkdirAll(fpath, os.ModePerm)
 			continue
 		}
@@ -274,17 +269,20 @@ func (p *Project) unzip(body []byte) error {
 		if err != nil {
 			return err
 		}
+
+		// if err = os.Chtimes(fpath, modTime, modTime); err != nil {
+		// 	return err
+		// }
+
+		p.Files = append(p.Files, fpath)
 	}
 
 	return nil
 }
 
 func (p *Project) Run(stdOut, stdErr io.Writer) error {
-	if !p.WasBuilt() {
-		// Build first if was not built already.
-		if err := p.build(); err != nil {
-			return err
-		}
+	if err := p.build(); err != nil {
+		return err
 	}
 
 	runCmd := getActionCommand(p.Dest, actionRun)
@@ -302,12 +300,16 @@ func (p *Project) Run(stdOut, stdErr io.Writer) error {
 const nodeModulesName = "node_modules"
 
 type packageJSON struct {
+	// Name            string            `json:"name"`
+	// Version         string            `json:"version"`
+	// Dependencies    map[string]string `json:"dependencies"`
+	// DevDependencies map[string]string `json:"devDependencies"`
 	Scripts map[string]string `json:"scripts"`
 }
 
 func (p *Project) build() error {
 	// Add any new directories and files to build files and save the project on built.
-	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreated: func(filename string) {
+	onFileChange := func(filename string) {
 		/* e.g.
 		build file: C:\Users\kataras\Desktop\myproject\app\node_modules
 		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json.545868579
@@ -315,13 +317,22 @@ func (p *Project) build() error {
 		build file: C:\Users\kataras\Desktop\myproject\app\public\build
 		*/
 		p.BuildFiles = append(p.BuildFiles, filename)
-	}})
+	}
+	onFileRemove := func(filename string) {
+		for i, name := range p.BuildFiles {
+			if name == filename {
+				copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
+				p.BuildFiles[len(p.BuildFiles)-1] = ""
+				p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
+			}
+		}
+	}
+	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreate: onFileChange, utils.FileRemove: onFileRemove})
 
 	if err != nil {
 		return fmt.Errorf("watcher <%s>: %v", p.Dest, err)
 	}
 
-	defer p.SaveToDisk()
 	defer watcher.Close()
 
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
@@ -347,26 +358,27 @@ func (p *Project) build() error {
 	}
 
 	for _, f := range files {
-		// check if not exist, if exists then do nothing otherwise run "npm install" automatically.
+		// Check if not exist, if exists then do nothing otherwise run "npm install" automatically.
 		dir := filepath.Dir(f)
+
 		if strings.Contains(dir, nodeModulesName) {
-			// it is a sub module which is already installed.
+			// It is a sub module which is already installed.
 			continue
-		}
-
-		nodeModulesFolder := filepath.Join(dir, nodeModulesName)
-		if utils.Exists(nodeModulesFolder) {
-			continue
-		}
-
-		installCmd := utils.Command(npmBin, "install")
-		if err = runCmd(installCmd, dir); err != nil {
-			return err
 		}
 
 		b, err := ioutil.ReadFile(f)
 		if err != nil {
 			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
+		}
+
+		// Run "npm install" only when package.json changed since last build.
+		if md5b := md5.Sum(b); !bytes.Equal(p.MD5PackageJSON, md5b[:]) {
+			p.MD5PackageJSON = md5b[:]
+
+			installCmd := utils.Command(npmBin, "install")
+			if err = runCmd(installCmd, dir); err != nil {
+				return err
+			}
 		}
 
 		// Check if package.json contains a build action and run it.
@@ -383,7 +395,7 @@ func (p *Project) build() error {
 		}
 	}
 
-	return nil
+	return p.SaveToDisk()
 }
 
 // Clean removes all project's build-only associated files.
@@ -394,7 +406,7 @@ func (p *Project) Clean() (err error) {
 		}
 	}
 
-	p.BuildFiles = p.BuildFiles[0:0]
+	p.BuildFiles = nil
 	return p.SaveToDisk()
 }
 
