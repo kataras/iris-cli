@@ -1,4 +1,4 @@
-package utils
+package parser
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/kataras/iris-cli/utils"
 )
 
 // ModulePath returns the module declaration of a go.mod file "b" contents.
@@ -77,7 +79,7 @@ func parseDeclaration(b []byte, declaration []byte) []byte {
 // it reads the package declaration of the `main.go` or any `*go`
 func TryFindPackage(dir string) (pkg []byte) {
 	ignoreFilename := ""
-	if Ext(dir) != "" { // could use os.Stat but let's use just extension to decide if it's file because the "dir" may not exist yet.
+	if utils.Ext(dir) != "" { // could use os.Stat but let's use just extension to decide if it's file because the "dir" may not exist yet.
 		// before change it to dir, take the filename so we can ignore the current file's package name if exists.
 		ignoreFilename = filepath.Base(dir)
 		dir = filepath.Dir(dir)

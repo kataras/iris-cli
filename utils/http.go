@@ -98,18 +98,3 @@ func DownloadFile(repo, version, name string) ([]byte, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, version, name)
 	return Download(url, nil)
 }
-
-// GetModulePath returns the module path of a github repository.
-func GetModulePath(repo string) (string, error) {
-	b, err := DownloadFile(repo, "", "go.mod")
-	if err != nil {
-		return "", err
-	}
-
-	modulePath := ModulePath(b)
-	if len(modulePath) == 0 {
-		return "", fmt.Errorf("module path: %s: unable to parse remote go.mod", repo)
-	}
-
-	return string(modulePath), nil
-}

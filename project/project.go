@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
 )
 
@@ -197,7 +198,7 @@ func (p *Project) unzip(body []byte) error {
 				return err
 			}
 
-			oldModuleName = utils.ModulePath(contents)
+			oldModuleName = parser.ModulePath(contents)
 			if p.Module == "" {
 				// if new module name is empty, then default it to the remote one.
 				p.Module = string(oldModuleName)

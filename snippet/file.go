@@ -11,6 +11,7 @@ import (
 	"text/template"
 	templateparse "text/template/parse"
 
+	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
 )
 
@@ -126,11 +127,11 @@ func (f *File) Install() error {
 	if f.Package != "" {
 		newPkg = []byte(f.Package)
 	} else {
-		newPkg = utils.TryFindPackage(fpath)
+		newPkg = parser.TryFindPackage(fpath)
 	}
 
 	if len(newPkg) > 0 {
-		b = bytes.ReplaceAll(b, utils.Package(b), newPkg)
+		b = bytes.ReplaceAll(b, parser.Package(b), newPkg)
 	}
 
 	if len(f.Replacements) > 0 {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -37,7 +38,7 @@ func checkCommand() *cobra.Command { // maintenance
 
 			if modulePath == "iris" || modulePath == irisRepo {
 				// grab the latest one by its remote go.mod (e.g. /v12 to /v13)
-				modulePath, err = utils.GetModulePath(irisRepo)
+				modulePath, err = getModulePath(irisRepo)
 				if err != nil {
 					return
 				}
@@ -180,4 +181,19 @@ type (
 
 func (m module) String() string {
 	return fmt.Sprintf("%s %s => %s", m.Path, m.Version, m.Update.Version)
+}
+
+// getModulePath returns the module path of a github repository.
+func getModulePath(repo string) (string, error) {
+	b, err := utils.DownloadFile(repo, "", "go.mod")
+	if err != nil {
+		return "", err
+	}
+
+	modulePath := parser.ModulePath(b)
+	if len(modulePath) == 0 {
+		return "", fmt.Errorf("module path: %s: unable to parse remote go.mod", repo)
+	}
+
+	return string(modulePath), nil
 }
