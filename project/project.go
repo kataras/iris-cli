@@ -342,22 +342,6 @@ func (p *Project) build() error {
 		return runCmd(buildCmd, p.Dest)
 	}
 
-	// TODO:
-	res, err := parser.Parse(p.Dest)
-	if err == nil {
-		for _, cmd := range res.Commands {
-			// Author's Note:
-			// track the executed commands: if go-bindata related
-			// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
-			// which follows after <TODO>.
-			if !strings.HasPrefix(cmd.Dir, p.Dest) {
-				cmd.Dir = p.Dest
-			}
-
-			runCmd(cmd, "")
-		}
-	}
-
 	// Locate any package.json project files and
 	// npm install. Afterwards npm run build if scripts: "build" exists.
 	files, err := utils.FindMatches(p.Dest, "package.json", false)
@@ -388,10 +372,19 @@ func (p *Project) build() error {
 			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
 		}
 
-		// Run "npm install" only when package.json changed since last build.
+		// Run "npm install" only when package.json changed since last build
+		// or when node_modules missing.
+		shouldNpmInstall := false
 		if md5b := md5.Sum(b); !bytes.Equal(p.MD5PackageJSON, md5b[:]) {
 			p.MD5PackageJSON = md5b[:]
+			shouldNpmInstall = true
+		}
 
+		if !utils.Exists(filepath.Join(dir, nodeModulesName)) {
+			shouldNpmInstall = true
+		}
+
+		if shouldNpmInstall {
 			installCmd := utils.Command(npmBin, "install")
 			if err = runCmd(installCmd, dir); err != nil {
 				return err
@@ -407,6 +400,67 @@ func (p *Project) build() error {
 		if _, ok := v.Scripts[actionBuild]; ok {
 			buildCmd := utils.Command(npmBin, "run", actionBuild)
 			if err = runCmd(buildCmd, dir); err != nil {
+				return err
+			}
+		}
+	}
+
+	// after npm install and npm build.
+	res, err := parser.Parse(p.Dest)
+	if err == nil {
+
+		skipGenerateAssetsIndexes := make(map[int]struct{})
+
+		for _, cmd := range res.Commands {
+			// Author's Note:
+			// track the executed commands: if go-bindata related
+			// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
+			// which follows after <TODO>.
+			if !utils.Exists(cmd.Dir) {
+				cmd.Dir = p.Dest
+			}
+
+			commandName := cmd.Args[0]
+
+			if commandName == "go-bindata" {
+				if len(cmd.Args) > 1 {
+					args := cmd.Args[1:]
+					for _, arg := range args {
+						for i, assetDir := range res.AssetDirs {
+							if assetDir.ShouldGenerated && filepath.ToSlash(assetDir.Dir+"/...") == arg {
+								// a custom command generates those assets.
+								skipGenerateAssetsIndexes[i] = struct{}{}
+							}
+						}
+					}
+				}
+			}
+
+			if err = runCmd(cmd, ""); err != nil {
+				return fmt.Errorf("command <%s> failed:\n%v", commandName, err)
+			}
+		}
+
+		var dirsToBuild []string
+		for i, assetDir := range res.AssetDirs {
+			if _, skip := skipGenerateAssetsIndexes[i]; skip {
+				continue
+			}
+
+			if !assetDir.ShouldGenerated {
+				continue
+			}
+
+			dirsToBuild = append(dirsToBuild, filepath.ToSlash(assetDir.Dir+"/..."))
+		}
+
+		if len(dirsToBuild) > 0 {
+			args := append([]string{
+				"-o",
+				"bindata.go",
+			}, dirsToBuild...)
+			goBindata := utils.Command("go-bindata", args...)
+			if err = runCmd(goBindata, p.Dest); err != nil {
 				return err
 			}
 		}
@@ -492,10 +546,44 @@ func getActionCommand(path string, action string) *exec.Cmd {
 	return nil
 }
 
+var thirdPartyBinaries = map[string]string{ // key = %GOPATH%/bin/$binary value = repository to fetch if not exists.
+	"go-bindata": "github.com/go-bindata/go-bindata/...",
+}
+
 func runCmd(cmd *exec.Cmd, dir string) error {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+
+	name := cmd.Args[0]
+	if repo, ok := thirdPartyBinaries[name]; ok {
+		if _, err := exec.LookPath(name); err != nil {
+			// try go-get it.
+			if err = runCmd(utils.Command("go", "get", "-u", "-f", repo), cmd.Dir); err != nil {
+				return err
+			}
+
+			// This doesn't work because of unexported cmd.lookPathErr, so call `runCmd` again:
+			// keep cmd.Args[0] as it's; it should be the base name without extension.
+			// cmd.Path, err = exec.LookPath(name)
+			// if err != nil {
+			// 	return err
+			// }
+
+			// if !utils.Exists(cmd.Path) {
+			// 	panic(cmd.Path + " does not exist after go get")
+			// }
+
+			var args []string
+			if len(cmd.Args) > 1 {
+				args = cmd.Args[1:]
+			}
+
+			return runCmd(utils.Command(name, args...), cmd.Dir)
+		}
+	}
+
+	// println("Run: " + strings.Join(cmd.Args, " "))
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {

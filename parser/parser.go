@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"io/ioutil"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	// "go/printer"
@@ -22,7 +23,7 @@ type AssetDir struct {
 }
 
 type Result struct {
-	AssetDirs []AssetDir
+	AssetDirs []*AssetDir
 	Commands  []*exec.Cmd
 }
 
@@ -42,14 +43,17 @@ func Parse(src interface{}) (*Result, error) {
 			// it's a file or dir.
 			if utils.IsDir(s) {
 				// return fmt.Errorf("path <%s> is not a go file", src)
-				pkgs, err := parser.ParseDir(fset, "", nil, parser.ParseComments)
+				pkgs, err := parser.ParseDir(fset, s, nil, parser.ParseComments)
 				if err != nil {
 					return nil, err
 				}
 
 				for _, pkg := range pkgs {
-					for _, node := range pkg.Files {
-						parseFile(node, res)
+					for filename, node := range pkg.Files {
+						if filepath.Base(filename) == "bindata.go" {
+							continue // skip go bindata generated file.
+						}
+						parseFile(node, filename, res)
 					}
 				}
 
@@ -78,12 +82,12 @@ func Parse(src interface{}) (*Result, error) {
 		return nil, err
 	}
 
-	parseFile(node, res)
+	parseFile(node, filename, res)
 
 	return res, nil
 }
 
-func parseFile(node *ast.File, res *Result) {
+func parseFile(node *ast.File, filename string, res *Result) {
 	for _, comment := range node.Comments {
 		commentText := strings.TrimSpace(strings.TrimSuffix(comment.Text(), "\n"))
 		commands := strings.Split(commentText, "$")
@@ -102,7 +106,7 @@ func parseFile(node *ast.File, res *Result) {
 			}
 
 			cmd := utils.Command(name, args...)
-			cmd.Dir = node.Name.Name
+			cmd.Dir = filepath.Dir(filename)
 			res.Commands = append(res.Commands, cmd)
 		}
 	}
@@ -182,7 +186,7 @@ func parseFile(node *ast.File, res *Result) {
 					if err == nil {
 						assetsDir = s
 					}
-					res.AssetDirs = append(res.AssetDirs, AssetDir{Dir: assetsDir, ShouldGenerated: isDirOptsGoBindata})
+					res.AssetDirs = append(res.AssetDirs, &AssetDir{Dir: assetsDir, ShouldGenerated: isDirOptsGoBindata})
 				}
 			}
 		}
