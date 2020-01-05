@@ -344,7 +344,7 @@ func (p *Project) build() error {
 
 	// Locate any package.json project files and
 	// npm install. Afterwards npm run build if scripts: "build" exists.
-	files, err := utils.FindMatches(p.Dest, "package.json", false)
+	files, err := utils.FindMatches(p.Dest, "package.json", "*\\node_modules", false)
 	if err != nil {
 		return err
 	}

@@ -111,13 +111,24 @@ func Dest(dest string) string {
 
 // FindMatches find all matches of a "pattern" reclusively.
 // Ordered by parent dir.
-func FindMatches(rootDir, pattern string, listDirectories bool) ([]string, error) {
+func FindMatches(rootDir, pattern, exclude string, listDirectories bool) ([]string, error) {
 	var matches []string
 	matchAny := pattern == "*"
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		if exclude != "" {
+			rel, _ := filepath.Rel(rootDir, path)
+			if ignore, _ := filepath.Match(exclude, rel); ignore {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
 		}
 
 		if info.IsDir() {
@@ -196,7 +207,7 @@ func WatchFileChanges(rootDir string, events WatchFileEvents) (*fsnotify.Watcher
 		}
 	}()
 
-	directoriesToWatch, err := FindMatches(rootDir, "*", true) // including rootDir itself.
+	directoriesToWatch, err := FindMatches(rootDir, "*", "*\\node_modules", true) // including rootDir itself.
 	if err != nil {
 		close(doneCh)
 		return nil, err
