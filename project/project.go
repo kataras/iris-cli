@@ -342,8 +342,24 @@ func (p *Project) build() error {
 		return runCmd(buildCmd, p.Dest)
 	}
 
-	// Else, locate any package.json project files and
-	// npm install and if scripts: "build" then npm run build.
+	// TODO:
+	res, err := parser.Parse(p.Dest)
+	if err == nil {
+		for _, cmd := range res.Commands {
+			// Author's Note:
+			// track the executed commands: if go-bindata related
+			// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
+			// which follows after <TODO>.
+			if !strings.HasPrefix(cmd.Dir, p.Dest) {
+				cmd.Dir = p.Dest
+			}
+
+			runCmd(cmd, "")
+		}
+	}
+
+	// Locate any package.json project files and
+	// npm install. Afterwards npm run build if scripts: "build" exists.
 	files, err := utils.FindMatches(p.Dest, "package.json", false)
 	if err != nil {
 		return err

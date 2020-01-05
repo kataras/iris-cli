@@ -19,7 +19,7 @@ func main(){
 
     // $ command3
 
-    /* $ command 4
+    /* $ command arg
     $ command5
         $ command6
     */
@@ -30,6 +30,7 @@ func main(){
         AssetInfo:  AssetInfo,
     })
 
+	// $ command arg1 arg2
     app.HandleDir("/", assetsDirectory, iris.DirOptions{
         Asset:      Asset,
         AssetNames: AssetNames,
@@ -48,13 +49,27 @@ func main(){
 		"command1",
 		"command2",
 		"command3",
-		"command 4",
+		"command arg",
 		"command5",
 		"command6",
+		"command arg1 arg2",
 	}
-	if !reflect.DeepEqual(res.Commands, expectedCommands) {
-		t.Fatalf("expected parsed commands to be:\n<%s>\nbut got:\n<%s>",
-			strings.Join(res.Commands, ", "), strings.Join(expectedCommands, ", "))
+
+	for i, cmd := range res.Commands {
+		nameArgs := strings.Split(expectedCommands[i], " ")
+
+		if expected, got := nameArgs[0], cmd.Args[0]; expected != got {
+			t.Fatalf("[%d] expected parsed command to be: %s but got: %s", i, expected, got)
+		}
+
+		if expected, got := len(nameArgs[1:]), len(cmd.Args[1:]); expected != got {
+			t.Fatalf("[%d] expected parsed command args length to be: %d but got: %d", i, expected, got)
+		}
+
+		if expected, got := strings.Join(nameArgs[1:], " "), strings.Join(cmd.Args[1:], " "); !reflect.DeepEqual(expected, got) {
+			t.Fatalf("[%d] expected parsed command args to be: %s but got: %s", i, expected, got)
+		}
+
 	}
 
 	expectedAssetDirs := []AssetDir{

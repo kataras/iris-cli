@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"io/ioutil"
+	"os/exec"
 	"strconv"
 	"strings"
 	// "go/printer"
@@ -22,50 +23,87 @@ type AssetDir struct {
 
 type Result struct {
 	AssetDirs []AssetDir
-	Commands  []string
+	Commands  []*exec.Cmd
 }
 
 const dirOptionsDeclName = "iris.DirOptions"
 
-func Parse(src interface{}) (res Result, err error) {
+func Parse(src interface{}) (*Result, error) {
+	res := new(Result)
+
 	var (
 		input    []byte
 		filename string
 	)
 
+	fset := token.NewFileSet()
 	if s, ok := src.(string); ok {
 		if utils.Exists(s) {
 			// it's a file or dir.
 			if utils.IsDir(s) {
-				// TODO: parser.ParseDir if ever required.
-				err = fmt.Errorf("path <%s> is not a go file", src)
-				return
+				// return fmt.Errorf("path <%s> is not a go file", src)
+				pkgs, err := parser.ParseDir(fset, "", nil, parser.ParseComments)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, pkg := range pkgs {
+					for _, node := range pkg.Files {
+						parseFile(node, res)
+					}
+				}
+
+				return res, nil
 			}
 
 			filename = s
-			input, err = ioutil.ReadFile(s)
+			b, err := ioutil.ReadFile(s)
 			if err != nil {
-				return
+				return nil, err
 			}
+
+			input = b
+
 		} else {
 			input = []byte(s)
 		}
+	} else if b, ok := src.([]byte); ok {
+		input = b
+	} else {
+		return nil, fmt.Errorf("unknown source <%v>", src)
 	}
 
-	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, filename, input, parser.ParseComments)
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 
+	parseFile(node, res)
+
+	return res, nil
+}
+
+func parseFile(node *ast.File, res *Result) {
 	for _, comment := range node.Comments {
 		commentText := strings.TrimSpace(strings.TrimSuffix(comment.Text(), "\n"))
 		commands := strings.Split(commentText, "$")
 		for _, command := range commands {
+			command = strings.TrimSpace(command)
 			if command == "" {
 				continue
 			}
-			res.Commands = append(res.Commands, strings.TrimSpace(command))
+
+			args := strings.Split(command, " ")
+			name := args[0]
+			if len(args) > 1 {
+				args = args[1:]
+			} else {
+				args = args[0:0]
+			}
+
+			cmd := utils.Command(name, args...)
+			cmd.Dir = node.Name.Name
+			res.Commands = append(res.Commands, cmd)
 		}
 	}
 
@@ -145,12 +183,9 @@ func Parse(src interface{}) (res Result, err error) {
 						assetsDir = s
 					}
 					res.AssetDirs = append(res.AssetDirs, AssetDir{Dir: assetsDir, ShouldGenerated: isDirOptsGoBindata})
-
 				}
 			}
 		}
 		return true
 	})
-
-	return res, nil
 }
