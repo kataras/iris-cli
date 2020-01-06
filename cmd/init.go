@@ -36,6 +36,8 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
+			cmd.Printf("Dest: %s\n", filepath.ToSlash(projectPath))
+
 			r, err := git.PlainOpen(projectPath)
 			if err != nil {
 				return fmt.Errorf("not git repository")
@@ -68,6 +70,7 @@ func initCommand() *cobra.Command {
 				}
 			}
 
+			cmd.Printf("Name: %s\n", filepath.Base(repo))
 			cmd.Printf("Repo: %s\n", repo)
 
 			// Find version, if any (otherwise it defaults to master)
@@ -130,6 +133,8 @@ func initCommand() *cobra.Command {
 					return filepath.SkipDir
 				}
 
+				rel = filepath.ToSlash(rel)
+
 				isDir := info.IsDir()
 				if m := ignore.Relative(rel, isDir); m != nil && m.Ignore() {
 					if isDir {
@@ -146,11 +151,8 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
-			cmd.Printf("\n\n\nFiles: %s\n", strings.Join(files, "\n"))
+			cmd.Printf("Files: %s\n", strings.Join(files, "\n- "))
 
-			// TODO: use t.Excludes to find build files and -projectfiles
-
-			// TODO: create .iris project, repository and other information may be fetched from git repository (through .git folder).
 			return nil
 		},
 	}

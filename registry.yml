@@ -1,5 +1,5 @@
 {
-    "projects": {
+    "Projects": {
         "svelte": "iris-contrib/svelte-template",
         "react-typescript": "iris-contrib/react-typescript-template"
     }
