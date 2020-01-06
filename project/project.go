@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/md5"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,12 +11,15 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Project struct {
@@ -26,16 +28,16 @@ type Project struct {
 	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/starter-kit"
 	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "master"
 	// Local.
-	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module
+	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module, absolute path of project destination.
 	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post installation.
-	// Absolute path of the files and directories installed, because the folder may be not empty
+	// Relative path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files,
 	// just the project's ones before build.
 	Files      []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
-	BuildFiles []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files that are created by build (makefile, build script, npm install & npm run build).
+	BuildFiles []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
 
 	MD5PackageJSON []byte `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 }
@@ -58,7 +60,7 @@ func New(name, repo string) *Project {
 	}
 }
 
-const projectFilename = ".iris"
+const projectFilename = ".iris.yml"
 
 func (p *Project) SaveToDisk() error {
 	projectFile := filepath.Join(p.Dest, projectFilename)
@@ -69,8 +71,10 @@ func (p *Project) SaveToDisk() error {
 	}
 	defer outFile.Close()
 
-	enc := gob.NewEncoder(outFile)
+	enc := yaml.NewEncoder(outFile)
 	return enc.Encode(p)
+	// enc := gob.NewEncoder(outFile)
+	// return enc.Encode(p)
 }
 
 var ErrProjectFileNotExist = errors.New("project file does not exist")
@@ -101,7 +105,9 @@ func LoadFromDisk(path string) (*Project, error) {
 	defer inFile.Close()
 
 	p := new(Project)
-	dec := gob.NewDecoder(inFile)
+	// dec := gob.NewDecoder(inFile)
+	// err = dec.Decode(p)
+	dec := yaml.NewDecoder(inFile)
 	err = dec.Decode(p)
 	if err != nil {
 		return nil, err
@@ -222,20 +228,28 @@ func (p *Project) unzip(body []byte) error {
 
 	for _, f := range r.File {
 		// without the /$project-$version root folder, so it can be used to dest as it is without creating a new folder based on the project name.
-		name := strings.TrimPrefix(f.Name, compressedRootFolder)
-		if name == "" {
-			// root folder.
+		// name := strings.TrimPrefix(f.Name, compressedRootFolder)
+		// if name == "" {
+		// 	// root folder.
+		// 	continue
+		// }
+		rel, err := filepath.Rel(compressedRootFolder, f.Name)
+		if err != nil {
 			continue
 		}
-		fpath := filepath.Join(p.Dest, name)
-
-		// https://snyk.io/research/zip-slip-vulnerability#go
-		if !strings.HasPrefix(fpath, p.Dest+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal path: %s", fpath)
+		if rel == "." {
+			continue
 		}
+		name := filepath.ToSlash(rel)
+		fpath := path.Join(p.Dest, name)
+
+		// // https://snyk.io/research/zip-slip-vulnerability#go
+		// if !strings.HasPrefix(fpath, p.Dest+"/") {
+		// 	return fmt.Errorf("illegal path: %s", fpath)
+		// }
 
 		if f.FileInfo().IsDir() {
-			p.Files = append(p.Files, fpath)
+			p.Files = append(p.Files, name)
 
 			os.MkdirAll(fpath, os.ModePerm)
 			continue
@@ -275,7 +289,7 @@ func (p *Project) unzip(body []byte) error {
 		// 	return err
 		// }
 
-		p.Files = append(p.Files, fpath)
+		p.Files = append(p.Files, name)
 	}
 
 	return nil
@@ -317,7 +331,10 @@ func (p *Project) build() error {
 		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json
 		build file: C:\Users\kataras\Desktop\myproject\app\public\build
 		*/
-		p.BuildFiles = append(p.BuildFiles, filename)
+		rel, err := filepath.Rel(p.Dest, filename)
+		if err == nil {
+			p.BuildFiles = append(p.BuildFiles, filepath.ToSlash(rel))
+		}
 	}
 	onFileRemove := func(filename string) {
 		for i, name := range p.BuildFiles {

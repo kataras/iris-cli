@@ -1,7 +1,6 @@
 package project
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -10,11 +9,10 @@ import (
 
 	"github.com/kataras/iris-cli/utils"
 
-	"github.com/BurntSushi/toml"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
-const DefaultRegistryEndpoint = "https://raw.githubusercontent.com/kataras/iris-cli/master/registry.json"
+const DefaultRegistryEndpoint = "https://raw.githubusercontent.com/kataras/iris-cli/master/registry.yml"
 
 type Registry struct {
 	Endpoint      string                       `json:"endpoint,omitempty" yaml:"Endpoint" toml:"Endpoint"`
@@ -56,14 +54,10 @@ func (r *Registry) Load() error {
 	}
 
 	switch ext := utils.Ext(r.Endpoint); ext {
-	case ".json":
-		err = json.Unmarshal(body, r)
 	case ".yaml", ".yml":
 		err = yaml.Unmarshal(body, r)
-	case ".toml", ".tml":
-		err = toml.Unmarshal(body, r)
 	default:
-		err = fmt.Errorf("unknown extension: %s", ext)
+		err = fmt.Errorf("unknown registry file extension: %s", ext)
 	}
 
 	if err != nil {

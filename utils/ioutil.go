@@ -106,7 +106,7 @@ func Dest(dest string) string {
 		dest = d
 	}
 
-	return filepath.Clean(dest)
+	return filepath.ToSlash(filepath.Clean(dest))
 }
 
 // FindMatches find all matches of a "pattern" reclusively.

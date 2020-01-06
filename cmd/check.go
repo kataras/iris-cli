@@ -17,7 +17,7 @@ import (
 const irisRepo = "kataras/iris"
 
 // iris-cli check
-// iris-cli check gopkg.in/yaml.v2
+// iris-cli check gopkg.in/yaml.v3
 // iris-cli check all
 func checkCommand() *cobra.Command { // maintenance
 	var (

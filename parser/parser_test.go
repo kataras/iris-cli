@@ -72,7 +72,7 @@ func main(){
 
 	}
 
-	expectedAssetDirs := []AssetDir{
+	expectedAssetDirs := []*AssetDir{
 		{Dir: "./app/build_literal", ShouldGenerated: true},
 		{Dir: "./app/build_var", ShouldGenerated: true},
 		{Dir: "./public", ShouldGenerated: false},

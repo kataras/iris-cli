@@ -1,9 +1,10 @@
 package project
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestRegistry(t *testing.T) {
@@ -39,9 +40,9 @@ func TestRegistry(t *testing.T) {
 
 func newTestRegistryEndpointAsset(expectedProjects *Registry) *Registry {
 	reg := NewRegistry()
-	reg.Endpoint = "./test.json"
+	reg.Endpoint = "./test.yml"
 	reg.EndpointAsset = func(string) ([]byte, error) {
-		return json.Marshal(expectedProjects)
+		return yaml.Marshal(expectedProjects)
 	}
 	return reg
 }

@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// iris-cli new --registry=./_testfiles/registry.json
-// iris-cli new --registry=./_testfiles/registry.json --dest=%GOPATH%/github.com/author --module=github.com/author/neffos github.com/kataras/neffos@master
+// iris-cli new --registry=./_testfiles/registry.yml
+// iris-cli new --registry=./_testfiles/registry.yml --dest=%GOPATH%/github.com/author --module=github.com/author/neffos github.com/kataras/neffos@master
 func newCommand() *cobra.Command {
 	var (
 		reg = project.NewRegistry()
@@ -39,7 +39,7 @@ func newCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "new",
-		Short:         "New creates a new starter kit project.",
+		Short:         "New downloads and initializes a new starter kit project",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Printf("Loading projects from <%s>\n", reg.Endpoint)

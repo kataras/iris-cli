@@ -37,7 +37,7 @@ func runCommand() *cobra.Command {
 						}
 
 						if doInstall {
-							if err := RunCommand(cmd, "new", name /* , "--registry=./_testfiles/registry.json" */); err != nil {
+							if err := RunCommand(cmd, "new", name /* , "--registry=./_testfiles/registry.yml" */); err != nil {
 								return err
 							}
 
