@@ -12,7 +12,7 @@ import (
 func cleanCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "clean",
-		Short:         "Clean a project after install or build.",
+		Short:         "Clean a project after install or build",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := "." // current directory.

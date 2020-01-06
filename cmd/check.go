@@ -26,7 +26,7 @@ func checkCommand() *cobra.Command { // maintenance
 
 	cmd := &cobra.Command{
 		Use:           "check",
-		Short:         "Check performs maintenance, if major, patch or minor update is available after confirmation, installs the latest Iris version or 'all'.",
+		Short:         "Check performs maintenance, if major, patch or minor update is available after confirmation, installs the latest Iris version or 'all'",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			modulePath := irisRepo
@@ -80,33 +80,51 @@ func checkCommand() *cobra.Command { // maintenance
 			}
 
 			if len(outdatedModules) > 0 {
-				survey.MultiSelectQuestionTemplate = `
-{{- if .ShowHelp }}{{- color .Config.Icons.Help.Format }}{{ .Config.Icons.Help.Text }} {{ .Help }}{{color "reset"}}{{"\n"}}{{end}}
-{{- color .Config.Icons.Question.Format }}{{ .Config.Icons.Question.Text }} {{color "reset"}}
-{{- color "default+hb"}}{{ .Message }}{{ .FilterMessage }}{{color "reset"}}
-{{- if .ShowAnswer}}{{color "cyan"}} {{.Answer}}{{color "reset"}}{{"\n"}}
-{{- else }}
-	{{- "  "}}{{- color "cyan"}}[Use arrows to move, space to uncheck and enter to select, type to filter{{- if and .Help (not .ShowHelp)}}, {{ .Config.HelpInput }} for more help{{end}}]{{color "reset"}}
-  {{- "\n"}}
-  {{- range $ix, $option := .PageEntries}}
-    {{- if eq $ix $.SelectedIndex }}{{color $.Config.Icons.SelectFocus.Format }}{{ $.Config.Icons.SelectFocus.Text }}{{color "reset"}}{{else}} {{end}}
-    {{- if index $.Checked $option.Index }}{{color $.Config.Icons.MarkedOption.Format }} {{ $.Config.Icons.MarkedOption.Text }} {{else}}{{color $.Config.Icons.UnmarkedOption.Format }} {{ $.Config.Icons.UnmarkedOption.Text }} {{end}}
-    {{- color "reset"}}
-    {{- " "}}{{$option.Value}}{{"\n"}}
-  {{- end}}
-{{- end}}`
+
 				var selectedUpdateModulesNameVersion []string
 
 				if !forceUpdate {
-					err := survey.AskOne(&survey.MultiSelect{
-						Message:  fmt.Sprintf("%d/%d modules are outdated, select to update", len(outdatedModules), totalModulesLen),
-						PageSize: 10,
-						Options:  updateModulesNameVersion,
-						Default:  updateModulesNameVersion,
-					}, &selectedUpdateModulesNameVersion)
-					if err != nil {
-						return err
+
+					if len(outdatedModules) == 1 {
+						shouldUpdateNow := false
+						err := survey.AskOne(&survey.Confirm{
+							Message: fmt.Sprintf("module %s is outdated, update now?", outdatedModules[0].Path),
+							Default: true,
+						}, &shouldUpdateNow)
+						if err != nil {
+							return err
+						}
+						if shouldUpdateNow {
+							selectedUpdateModulesNameVersion = updateModulesNameVersion
+						}
+					} else {
+						survey.MultiSelectQuestionTemplate = `
+						{{- if .ShowHelp }}{{- color .Config.Icons.Help.Format }}{{ .Config.Icons.Help.Text }} {{ .Help }}{{color "reset"}}{{"\n"}}{{end}}
+						{{- color .Config.Icons.Question.Format }}{{ .Config.Icons.Question.Text }} {{color "reset"}}
+						{{- color "default+hb"}}{{ .Message }}{{ .FilterMessage }}{{color "reset"}}
+						{{- if .ShowAnswer}}{{color "cyan"}} {{.Answer}}{{color "reset"}}{{"\n"}}
+						{{- else }}
+							{{- "  "}}{{- color "cyan"}}[Use arrows to move, space to uncheck and enter to select, type to filter{{- if and .Help (not .ShowHelp)}}, {{ .Config.HelpInput }} for more help{{end}}]{{color "reset"}}
+						  {{- "\n"}}
+						  {{- range $ix, $option := .PageEntries}}
+							{{- if eq $ix $.SelectedIndex }}{{color $.Config.Icons.SelectFocus.Format }}{{ $.Config.Icons.SelectFocus.Text }}{{color "reset"}}{{else}} {{end}}
+							{{- if index $.Checked $option.Index }}{{color $.Config.Icons.MarkedOption.Format }} {{ $.Config.Icons.MarkedOption.Text }} {{else}}{{color $.Config.Icons.UnmarkedOption.Format }} {{ $.Config.Icons.UnmarkedOption.Text }} {{end}}
+							{{- color "reset"}}
+							{{- " "}}{{$option.Value}}{{"\n"}}
+						  {{- end}}
+						{{- end}}`
+
+						err := survey.AskOne(&survey.MultiSelect{
+							Message:  fmt.Sprintf("%d/%d modules are outdated, select to update", len(outdatedModules), totalModulesLen),
+							PageSize: 10,
+							Options:  updateModulesNameVersion,
+							Default:  updateModulesNameVersion,
+						}, &selectedUpdateModulesNameVersion)
+						if err != nil {
+							return err
+						}
 					}
+
 				} else {
 					selectedUpdateModulesNameVersion = updateModulesNameVersion
 				}
@@ -140,13 +158,22 @@ func checkCommand() *cobra.Command { // maintenance
 				}
 
 				//	cmd.Printf("%d modules failed to update:\n%s\n", len(failedToUpdateNameVersion), strings.Join(failedToUpdateNameVersion, "\n"))
-				cmd.Printf("%d modules are updated successfully.\n", succeedLen)
+				msg := fmt.Sprintf("%d modules are updated successfully", succeedLen)
+				if succeedLen == 1 {
+					msg = "module updated successfully"
+				}
+				cmd.Println(msg)
 				if err != nil {
 					cmd.Printf("Failed to update %d modules:\n", len(selectedUpdateModulesNameVersion)-succeedLen)
 					return err
 				}
 			} else {
-				cmd.Printf("%d modules are up-to-date.\n", totalModulesLen)
+				if n := totalModulesLen; n == 1 {
+					cmd.Println("module is up-to-date")
+				} else if n > 1 {
+					cmd.Printf("%d modules are up-to-date\n", totalModulesLen)
+				}
+
 			}
 
 			return nil
