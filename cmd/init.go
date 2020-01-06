@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kataras/iris-cli/parser"
+	"github.com/kataras/iris-cli/project"
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/spf13/cobra"
@@ -36,11 +37,9 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
-			cmd.Printf("Dest: %s\n", filepath.ToSlash(projectPath))
-
 			r, err := git.PlainOpen(projectPath)
 			if err != nil {
-				return fmt.Errorf("not git repository")
+				return fmt.Errorf("not a git repository")
 			}
 
 			remotes, err := r.Remotes()
@@ -70,9 +69,6 @@ func initCommand() *cobra.Command {
 				}
 			}
 
-			cmd.Printf("Name: %s\n", filepath.Base(repo))
-			cmd.Printf("Repo: %s\n", repo)
-
 			// Find version, if any (otherwise it defaults to master)
 			version, err := getLatestTagFromRepository(r)
 			if version == "" {
@@ -85,8 +81,6 @@ func initCommand() *cobra.Command {
 
 			version = filepath.Base(version)
 
-			cmd.Printf("Version: %s\n", version)
-
 			// Find go module path.
 			goModFile := filepath.Join(projectPath, "go.mod")
 			if !utils.Exists(goModFile) {
@@ -98,8 +92,6 @@ func initCommand() *cobra.Command {
 			}
 
 			module := string(parser.ModulePath(b))
-
-			cmd.Printf("Module: %s\n", module)
 
 			// t, err := r.Worktree()
 			// if err != nil {
@@ -151,9 +143,16 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
-			cmd.Printf("Files: %s\n", strings.Join(files, "\n- "))
+			p := &project.Project{
+				Name:    filepath.Base(repo),
+				Repo:    repo,
+				Version: version,
+				Dest:    filepath.ToSlash(projectPath),
+				Module:  module,
+				Files:   files,
+			}
 
-			return nil
+			return p.SaveToDisk()
 		},
 	}
 	return cmd
