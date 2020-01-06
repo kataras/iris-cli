@@ -1,6 +1,5 @@
-{
-    "Projects": {
-        "svelte": "iris-contrib/svelte-template",
-        "react-typescript": "iris-contrib/react-typescript-template"
-    }
-}
+Projects:
+  {
+    svelte: "iris-contrib/svelte-template",
+    react-typescript: "iris-contrib/react-typescript-template",
+  }
