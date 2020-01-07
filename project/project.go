@@ -225,7 +225,6 @@ func (p *Project) unzip(body []byte) error {
 
 	var (
 		newModuleName = []byte(p.Module)
-		shouldReplace = !bytes.Equal(oldModuleName, newModuleName)
 	)
 
 	p.Dest = utils.Dest(p.Dest)
@@ -270,21 +269,33 @@ func (p *Project) unzip(body []byte) error {
 		}
 
 		// If new(local) module name differs the current(remote) one.
-		if shouldReplace {
+		if shouldReplaceModule, hasReplacements := !bytes.Equal(oldModuleName, newModuleName), len(p.Replacements) > 0; shouldReplaceModule || hasReplacements {
 			contents, ioErr := ioutil.ReadAll(rc)
 			if ioErr != nil {
 				return ioErr
 			}
 
-			newContents := bytes.ReplaceAll(contents, oldModuleName, newModuleName)
+			if shouldReplaceModule {
+				contents = bytes.ReplaceAll(contents, oldModuleName, newModuleName)
+			}
 
-			if len(p.Replacements) > 0 {
+			if hasReplacements {
 				for oldContent, newContent := range p.Replacements {
-					newContents = bytes.ReplaceAll(newContents, []byte(oldContent), []byte(newContent))
+					if !shouldReplaceModule {
+						// If username/repo style then update go module too.
+						if key := "github.com/" + oldContent; key == p.Module {
+							newModuleName = append([]byte("github.com/"), newContent...)
+							contents = bytes.ReplaceAll(contents, oldModuleName, newModuleName)
+							p.Module = string(newModuleName)
+							shouldReplaceModule = true // once.
+						}
+					}
+
+					contents = bytes.ReplaceAll(contents, []byte(oldContent), []byte(newContent))
 				}
 			}
 
-			_, err = outFile.Write(newContents)
+			_, err = outFile.Write(contents)
 		} else {
 			_, err = io.Copy(outFile, rc)
 		}
