@@ -33,15 +33,15 @@ type Project struct {
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post installation.
+	// InlineCommands enables source code comments stats with // $ _command_ to execute on "run" command.
+	InlineCommands bool `json:"inline_commands" yaml:"InlineCommands" toml:"InlineCommands"`
 	// Relative path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files,
 	// just the project's ones before build.
-	Files      []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
-	BuildFiles []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
 
-	// InlineCommands enables source code comments stats with // $ _command_ to execute on "run" command.
-	InlineCommands bool   `json:"inline_commands" yaml:"InlineCommands" toml:"InlineCommands"`
-	MD5PackageJSON []byte `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
+	Files          []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
+	BuildFiles     []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
+	MD5PackageJSON []byte   `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 }
 
 func New(name, repo string) *Project {
@@ -63,10 +63,10 @@ func New(name, repo string) *Project {
 	}
 }
 
-const projectFilename = ".iris.yml"
+const ProjectFilename = ".iris.yml"
 
 func (p *Project) SaveToDisk() error {
-	projectFile := filepath.Join(p.Dest, projectFilename)
+	projectFile := filepath.Join(p.Dest, ProjectFilename)
 
 	outFile, err := os.OpenFile(projectFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if err != nil {
@@ -96,7 +96,7 @@ func LoadFromDisk(path string) (*Project, error) {
 		projectPath = filepath.Dir(projectPath)
 	}
 
-	projectFile := filepath.Join(projectPath, projectFilename)
+	projectFile := filepath.Join(projectPath, ProjectFilename)
 	if !utils.Exists(projectFile) {
 		return nil, ErrProjectFileNotExist
 	}
@@ -520,7 +520,7 @@ func (p *Project) Unistall() (err error) {
 	os.Remove(goSumFile) // ignore error.
 
 	// remove project file too.
-	projectFile := filepath.Join(p.Dest, projectFilename)
+	projectFile := filepath.Join(p.Dest, ProjectFilename)
 	return os.Remove(projectFile)
 }
 

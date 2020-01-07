@@ -104,7 +104,8 @@ func initCommand() *cobra.Command {
 
 			var files []string
 
-			ignore, err := gitignore.NewFromFile(filepath.Join(projectPath, ".gitignore"))
+			gitIgnoreFile := filepath.Join(projectPath, ".gitignore")
+			ignore, err := gitignore.NewFromFile(gitIgnoreFile)
 			if err != nil {
 				return err
 			}
@@ -143,14 +144,26 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
+			if m := ignore.Relative(project.ProjectFilename, false); m == nil { // if entry does not exist at all. Skip if included by user.
+				// then add it to the gitignore.
+				f, err := os.OpenFile(gitIgnoreFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err == nil {
+					_, err = f.WriteString("\n# ignore iris project file\n.iris.yml\n")
+					f.Close()
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 			p := &project.Project{
 				Name:           filepath.Base(repo),
 				Repo:           repo,
 				Version:        version,
 				Dest:           filepath.ToSlash(projectPath),
 				Module:         module,
-				Files:          files,
 				InlineCommands: true,
+				Files:          files,
 			}
 
 			return p.SaveToDisk()
