@@ -74,7 +74,6 @@ func addCommand() *cobra.Command {
 							}
 							return
 						},
-
 						Prompt: &survey.Input{Message: "Load template data from json file:", Default: tmplDataFile,
 							Help: "Leave it empty if the snippet is not a template"},
 					},
