@@ -34,6 +34,7 @@ func newCommand() *cobra.Command {
 				bar.Set("all_bytes", formatByteLength(len(b)))
 				return b, err
 			},
+			InlineCommands: true,
 		}
 	)
 

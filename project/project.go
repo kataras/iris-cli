@@ -39,6 +39,8 @@ type Project struct {
 	Files      []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
 	BuildFiles []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
 
+	// InlineCommands enables source code comments stats with // $ _command_ to execute on "run" command.
+	InlineCommands bool   `json:"inline_commands" yaml:"InlineCommands" toml:"InlineCommands"`
 	MD5PackageJSON []byte `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 }
 
@@ -52,11 +54,12 @@ func New(name, repo string) *Project {
 	}
 
 	return &Project{
-		Name:    name,
-		Repo:    repo,
-		Version: version,
-		Dest:    "",
-		Module:  "",
+		Name:           name,
+		Repo:           repo,
+		Version:        version,
+		Dest:           "",
+		Module:         "",
+		InlineCommands: true,
 	}
 }
 
@@ -428,33 +431,35 @@ func (p *Project) build() error {
 
 		skipGenerateAssetsIndexes := make(map[int]struct{})
 
-		for _, cmd := range res.Commands {
-			// Author's Note:
-			// track the executed commands: if go-bindata related
-			// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
-			// which follows after <TODO>.
-			if !utils.Exists(cmd.Dir) {
-				cmd.Dir = p.Dest
-			}
+		if p.InlineCommands {
+			for _, cmd := range res.Commands {
+				// Author's Note:
+				// track the executed commands: if go-bindata related
+				// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
+				// which follows after <TODO>.
+				if !utils.Exists(cmd.Dir) {
+					cmd.Dir = p.Dest
+				}
 
-			commandName := cmd.Args[0]
+				commandName := cmd.Args[0]
 
-			if commandName == "go-bindata" {
-				if len(cmd.Args) > 1 {
-					args := cmd.Args[1:]
-					for _, arg := range args {
-						for i, assetDir := range res.AssetDirs {
-							if assetDir.ShouldGenerated && filepath.ToSlash(assetDir.Dir+"/...") == arg {
-								// a custom command generates those assets.
-								skipGenerateAssetsIndexes[i] = struct{}{}
+				if commandName == "go-bindata" {
+					if len(cmd.Args) > 1 {
+						args := cmd.Args[1:]
+						for _, arg := range args {
+							for i, assetDir := range res.AssetDirs {
+								if assetDir.ShouldGenerated && filepath.ToSlash(assetDir.Dir+"/...") == arg {
+									// a custom command generates those assets.
+									skipGenerateAssetsIndexes[i] = struct{}{}
+								}
 							}
 						}
 					}
 				}
-			}
 
-			if err = runCmd(cmd, ""); err != nil {
-				return fmt.Errorf("command <%s> failed:\n%v", commandName, err)
+				if err = runCmd(cmd, ""); err != nil {
+					return fmt.Errorf("command <%s> failed:\n%v", commandName, err)
+				}
 			}
 		}
 

@@ -144,12 +144,13 @@ func initCommand() *cobra.Command {
 			}
 
 			p := &project.Project{
-				Name:    filepath.Base(repo),
-				Repo:    repo,
-				Version: version,
-				Dest:    filepath.ToSlash(projectPath),
-				Module:  module,
-				Files:   files,
+				Name:           filepath.Base(repo),
+				Repo:           repo,
+				Version:        version,
+				Dest:           filepath.ToSlash(projectPath),
+				Module:         module,
+				Files:          files,
+				InlineCommands: true,
 			}
 
 			return p.SaveToDisk()
