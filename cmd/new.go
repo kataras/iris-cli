@@ -110,6 +110,7 @@ func newCommand() *cobra.Command {
 	cmd.Flags().StringVar(&reg.Endpoint, "registry", reg.Endpoint, "--registry=URL or local file")
 	cmd.Flags().StringVar(&opts.Dest, "dest", opts.Dest, "--dest=empty for current working directory or %GOPATH%/author")
 	cmd.Flags().StringVar(&opts.Module, "module", opts.Module, "--module=local module name")
+	cmd.Flags().StringToStringVar(&opts.Replacements, "replace", nil, "--replace=oldValue=newValue,oldValue2=newValue2")
 
 	return cmd
 }

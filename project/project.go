@@ -28,8 +28,9 @@ type Project struct {
 	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/starter-kit"
 	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "master"
 	// Local.
-	Dest   string `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module, absolute path of project destination.
-	Module string `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
+	Dest         string            `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module, absolute path of project destination.
+	Module       string            `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
+	Replacements map[string]string `json:"-" yaml:"-" toml:"-"`                          // any raw text replacements.
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post installation.
@@ -276,6 +277,13 @@ func (p *Project) unzip(body []byte) error {
 			}
 
 			newContents := bytes.ReplaceAll(contents, oldModuleName, newModuleName)
+
+			if len(p.Replacements) > 0 {
+				for oldContent, newContent := range p.Replacements {
+					newContents = bytes.ReplaceAll(newContents, []byte(oldContent), []byte(newContent))
+				}
+			}
+
 			_, err = outFile.Write(newContents)
 		} else {
 			_, err = io.Copy(outFile, rc)
