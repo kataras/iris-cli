@@ -4,7 +4,6 @@ package utils
 
 import (
 	"os/exec"
-	"syscall"
 )
 
 // Command returns the Cmd struct to execute the named program with
