@@ -267,9 +267,9 @@ func (p *Project) unzip(body []byte) error {
 
 		// If new(local) module name differs the current(remote) one.
 		if shouldReplace {
-			contents, err := ioutil.ReadAll(rc)
-			if err != nil {
-				return err
+			contents, ioErr := ioutil.ReadAll(rc)
+			if ioErr != nil {
+				return ioErr
 			}
 
 			newContents := bytes.ReplaceAll(contents, oldModuleName, newModuleName)

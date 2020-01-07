@@ -17,11 +17,13 @@ import (
 	"github.com/kataras/iris-cli/utils"
 )
 
+// AssetDir represents the parsed asset directories that are handled by Iris.
 type AssetDir struct {
 	Dir             string
 	ShouldGenerated bool
 }
 
+// Result is the `Parse` return value.
 type Result struct {
 	AssetDirs []*AssetDir
 	Commands  []*exec.Cmd
@@ -29,6 +31,8 @@ type Result struct {
 
 const dirOptionsDeclName = "iris.DirOptions"
 
+// Parse accepts a source and returns a `Result`.
+// Source "src" can be a filepath, directory or Go source code contents.
 func Parse(src interface{}) (*Result, error) {
 	res := new(Result)
 
