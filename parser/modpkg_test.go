@@ -18,7 +18,7 @@ func main() {}`)
 
 func TestModulePath(t *testing.T) {
 	contents := []byte(`module testmodule
-require github.com/kataras/iris v12.1.2
+require github.com/kataras/iris/v12 v12.1.4
 `)
 
 	if expected, got := []byte("testmodule"), ModulePath(contents); !bytes.Equal(expected, got) {

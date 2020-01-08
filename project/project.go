@@ -19,6 +19,7 @@ import (
 	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
 
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
 
@@ -230,19 +231,15 @@ func (p *Project) unzip(body []byte) error {
 	p.Dest = utils.Dest(p.Dest)
 
 	for _, f := range r.File {
-		// without the /$project-$version root folder, so it can be used to dest as it is without creating a new folder based on the project name.
-		// name := strings.TrimPrefix(f.Name, compressedRootFolder)
-		// if name == "" {
-		// 	// root folder.
-		// 	continue
-		// }
 		rel, err := filepath.Rel(compressedRootFolder, f.Name)
 		if err != nil {
 			continue
 		}
+
 		if rel == "." {
 			continue
 		}
+
 		name := filepath.ToSlash(rel)
 		fpath := path.Join(p.Dest, name)
 
@@ -331,7 +328,11 @@ func (p *Project) Run(stdOut, stdErr io.Writer) error {
 	runCmd.Stdout = stdOut
 	runCmd.Stderr = stdErr
 
-	return runCmd.Run()
+	var g errgroup.Group
+	g.Go(runCmd.Run)
+	// g.Go(p.watch)
+
+	return g.Wait()
 }
 
 const nodeModulesName = "node_modules"
@@ -344,35 +345,61 @@ type packageJSON struct {
 	Scripts map[string]string `json:"scripts"`
 }
 
+func (p *Project) rel(name string) string {
+	rel, err := filepath.Rel(p.Dest, name)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
 func (p *Project) build() error {
 	// Add any new directories and files to build files and save the project on built.
-	onFileChange := func(filename string) {
-		/* e.g.
-		build file: C:\Users\kataras\Desktop\myproject\app\node_modules
-		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json.545868579
-		build file: C:\Users\kataras\Desktop\myproject\app\package-lock.json
-		build file: C:\Users\kataras\Desktop\myproject\app\public\build
-		*/
-		rel, err := filepath.Rel(p.Dest, filename)
-		if err == nil {
-			p.BuildFiles = append(p.BuildFiles, filepath.ToSlash(rel))
-		}
+	watcher, err := utils.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("build: watcher: %s: %v", p.Dest, err)
 	}
-	onFileRemove := func(filename string) {
-		for i, name := range p.BuildFiles {
-			if name == filename {
-				copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
-				p.BuildFiles[len(p.BuildFiles)-1] = ""
-				p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
+
+	watcher.AddRecursively(p.Dest)
+	go func() {
+		for {
+			select {
+			case evts := <-watcher.Events:
+				for _, evt := range evts {
+					name := p.rel(evt.Name)
+
+					// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+
+					switch evt.Op {
+					case utils.FileCreate:
+						exists := false
+						for _, buildName := range p.BuildFiles {
+							if buildName == name {
+								exists = true
+								break
+							}
+						}
+
+						if !exists {
+							p.BuildFiles = append(p.BuildFiles, name)
+						}
+
+					case utils.FileRemove:
+						for i, buildName := range p.BuildFiles {
+							if buildName == name {
+								copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
+								p.BuildFiles[len(p.BuildFiles)-1] = ""
+								p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
+								break
+							}
+						}
+					}
+				}
 			}
 		}
-	}
-	watcher, err := utils.WatchFileChanges(p.Dest, utils.WatchFileEvents{utils.FileCreate: onFileChange, utils.FileRemove: onFileRemove})
+	}()
 
-	if err != nil {
-		return fmt.Errorf("watcher <%s>: %v", p.Dest, err)
-	}
-
+	defer p.SaveToDisk()
 	defer watcher.Close()
 
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
@@ -507,12 +534,47 @@ func (p *Project) build() error {
 		}
 	}
 
-	return p.SaveToDisk()
+	return nil
+}
+
+// TODO: ...
+func (p *Project) watch() error {
+	watcher, err := utils.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("watch: watcher: %s: %v", p.Dest, err)
+	}
+
+	watcher.AddFilter = func(dir string) bool {
+		// If it's a build directory should be ignored by the watcher.
+		for _, f := range p.BuildFiles {
+			if strings.HasSuffix(dir, f) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	watcher.AddRecursively(p.Dest)
+
+	for {
+		select {
+		case <-watcher.Closed():
+			return nil
+		case evts := <-watcher.Events:
+			for _, evt := range evts {
+				name := p.rel(evt.Name)
+
+				fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+			}
+		}
+	}
 }
 
 // Clean removes all project's build-only associated files.
 func (p *Project) Clean() (err error) {
 	for _, f := range p.BuildFiles {
+		f = filepath.Join(p.Dest, f)
 		if err = os.RemoveAll(f); err != nil {
 			return
 		}
@@ -529,6 +591,7 @@ func (p *Project) Unistall() (err error) {
 	}
 
 	for _, f := range p.Files {
+		f = filepath.Join(p.Dest, f)
 		if err = os.RemoveAll(f); err != nil {
 			return
 		}

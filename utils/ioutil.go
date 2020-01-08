@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -174,57 +175,105 @@ const (
 	FileCreate = fsnotify.Create
 	FileWrite  = fsnotify.Write
 	FileRemove = fsnotify.Remove
+	FileRename = fsnotify.Rename
 )
 
-type WatchFileEvents map[fsnotify.Op]func(filename string)
+type Filter func(name string) bool
 
-func WatchFileChanges(rootDir string, events WatchFileEvents) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
+type Watcher struct {
+	watcher  *fsnotify.Watcher
+	rootDirs []string
+
+	AddFilter Filter
+
+	Events chan []fsnotify.Event
+	closed chan struct{}
+}
+
+func (w *Watcher) AddRecursively(root string) error {
+	dirs, err := FindMatches(root, "*", "*\\node_modules", true) // including "root" itself.
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	doneCh := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
+	for _, dir := range dirs {
+		if err = w.Add(dir); err != nil {
+			return err
+		}
+	}
 
-				for op, cb := range events {
-					if event.Op&op == op {
-						cb(event.Name)
-					}
-				}
-			case <-doneCh:
-				if watcher != nil {
-					watcher.Close()
-				}
-				return
+	w.rootDirs = append(w.rootDirs, root)
+
+	return nil
+}
+
+func (w *Watcher) Add(dir string) error {
+	if filter := w.AddFilter; filter != nil {
+		if !filter(dir) {
+			return nil
+		}
+	}
+
+	return w.watcher.Add(dir)
+}
+
+func (w *Watcher) Is(evt fsnotify.Event, op fsnotify.Op) bool {
+	return evt.Op&op == op
+}
+
+func (w *Watcher) Close() error {
+	close(w.closed)
+	return w.watcher.Close()
+}
+
+func (w *Watcher) Closed() <-chan struct{} {
+	return w.closed
+}
+
+func (w *Watcher) start() {
+	ticker := time.NewTicker(1 * time.Second)
+	evts := make([]fsnotify.Event, 0)
+
+	for {
+		select {
+		case event := <-w.watcher.Events:
+			if event.Name == "" {
+				continue
 			}
-		}
-	}()
 
-	directoriesToWatch, err := FindMatches(rootDir, "*", "*\\node_modules", true) // including rootDir itself.
+			if event.Op&fsnotify.Chmod == fsnotify.Chmod {
+				continue
+			}
+
+			evts = append(evts, event)
+		case <-ticker.C:
+			if len(evts) > 0 {
+				w.Events <- evts
+				evts = evts[0:0]
+			}
+		case <-w.closed:
+			ticker.Stop()
+			if len(evts) > 0 { // flush events.
+				w.Events <- evts
+			}
+			// close(w.Events)
+			return
+		}
+	}
+}
+
+func NewWatcher() (*Watcher, error) {
+	fsWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		close(doneCh)
 		return nil, err
 	}
 
-	for _, dir := range directoriesToWatch {
-		/* e.g.
-		watch: C:\Users\kataras\Desktop\myproject
-		watch: C:\Users\kataras\Desktop\myproject\app
-		watch: C:\Users\kataras\Desktop\myproject\app\public
-		watch: C:\Users\kataras\Desktop\myproject\app\src
-		*/
-		if err = watcher.Add(dir); err != nil {
-			close(doneCh)
-			return nil, err
-		}
+	w := &Watcher{
+		watcher: fsWatcher,
+		Events:  make(chan []fsnotify.Event, 1),
+		closed:  make(chan struct{}, 1),
 	}
 
-	return watcher, nil
+	go w.start()
+	return w, nil
 }
