@@ -35,8 +35,8 @@ type Project struct {
 	// Pre Installation.
 	Reader func(io.Reader) ([]byte, error) `json:"-" yaml:"-" toml:"-"`
 	// Post installation.
-	// InlineCommands enables source code comments stats with // $ _command_ to execute on "run" command.
-	InlineCommands bool `json:"inline_commands" yaml:"InlineCommands" toml:"InlineCommands"`
+	// DisableInlineCommands disables source code comments stats with // $ _command_ to execute on "run" command.
+	DisableInlineCommands bool `json:"disable_inline_commands" yaml:"DisableInlineCommands" toml:"DisableInlineCommands"`
 	// Relative path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files,
 	// just the project's ones before build.
@@ -46,6 +46,9 @@ type Project struct {
 	MD5PackageJSON []byte   `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 
 	runner *exec.Cmd
+
+	// DisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
+	DisableWatch bool `json:"disable_watch" yaml:"DisableWatch" toml:"DisableWatch"`
 }
 
 func New(name, repo string) *Project {
@@ -58,12 +61,11 @@ func New(name, repo string) *Project {
 	}
 
 	return &Project{
-		Name:           name,
-		Repo:           repo,
-		Version:        version,
-		Dest:           "",
-		Module:         "",
-		InlineCommands: true,
+		Name:    name,
+		Repo:    repo,
+		Version: version,
+		Dest:    "",
+		Module:  "",
 	}
 }
 
@@ -326,8 +328,11 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 	runCmd.Stderr = stderr
 
 	var g errgroup.Group
+
 	g.Go(runCmd.Run)
-	// g.Go(p.watch)
+	if !p.DisableWatch {
+		g.Go(p.watch)
+	}
 
 	return g.Wait()
 }
@@ -491,7 +496,7 @@ func (p *Project) build() error {
 
 		skipGenerateAssetsIndexes := make(map[int]struct{})
 
-		if p.InlineCommands {
+		if !p.DisableInlineCommands {
 			for _, cmd := range res.Commands {
 				// Author's Note:
 				// track the executed commands: if go-bindata related
@@ -551,7 +556,10 @@ func (p *Project) build() error {
 	return nil
 }
 
-// TODO: ...
+// TODO: not only rebuild frontend and reload server-side but add a browser live reload through a different websocket server (here)
+// which an iris app's frontend javascript file should communicate, this can be happen through Iris side configuration to disable/enable it
+// and let iris-cli parser take action based on that(?). A good start is to implement the LiveReload protocol: http://livereload.com/api/protocol/
+// or make a custom and fairly simple module for that.
 func (p *Project) watch() error {
 	watcher, err := utils.NewWatcher()
 	if err != nil {
@@ -598,44 +606,51 @@ func (p *Project) watch() error {
 
 			// if many events, just build the whole project.
 			if len(evts) > 20 {
-				fmt.Println("bulk changes")
 				go rerun()
 				continue
 			}
 
 			for _, evt := range evts {
 				name := p.rel(evt.Name)
+				// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
 
 				ext := ""
 				if idx := strings.LastIndexByte(name, '.'); idx > 0 && len(name)-1 > idx {
 					ext = name[idx:]
 				}
 
-				fmt.Printf("change: ext: %s\n", ext)
-
 				switch ext {
 				case ".go", ".mod":
 					backendChanges = true
-				case ".html", ".htm", ".js", ".ts", ".jsx", ".tsx", ".css", ".scss", ".less":
+				case ".html", ".htm",
+					".js", ".ts",
+					".jsx", ".tsx",
+					".css", ".scss", ".less",
+					".json":
 					frontendChanges = true
+				case ".yml", ".toml", ".tml":
+					if name == ProjectFilename {
+						// skip if it's the .iris.yml project file.
+						continue
+					}
+
+					// probably a server configuration file.
+					backendChanges = true
+				case ".proto":
+					frontendChanges = true
+					backendChanges = true
 				}
-
-				// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
-
 			}
 
 			if frontendChanges {
-				fmt.Println("frontend changes")
 				if err := p.build(); err != nil {
 					return err
 				}
 			}
 
 			if backendChanges {
-				fmt.Println("backend changes")
 				go rerunBackend()
 			}
-
 		}
 	}
 }
