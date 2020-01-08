@@ -17,7 +17,6 @@ func Command(name string, args ...string) *exec.Cmd {
 }
 
 func KillCommand(cmd *exec.Cmd) error {
-	pid := cmd.Process.Pid
-	kill := exec.Command("TASKKILL", "/T", "/F", "/PID", strconv.Itoa(pid))
+	kill := exec.Command("TASKKILL", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
 	return kill.Run()
 }

@@ -14,6 +14,5 @@ func Command(name string, args ...string) *exec.Cmd {
 }
 
 func KillCommand(cmd *exec.Cmd) error {
-	pid := cmd.Process.Pid
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
