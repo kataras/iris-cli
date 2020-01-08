@@ -4,6 +4,7 @@ package utils
 
 import (
 	"os/exec"
+	"strconv"
 	"syscall"
 )
 
@@ -13,4 +14,10 @@ func Command(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return cmd
+}
+
+func KillCommand(cmd *exec.Cmd) error {
+	pid := cmd.Process.Pid
+	kill := exec.Command("TASKKILL", "/T", "/F", "/PID", strconv.Itoa(pid))
+	return kill.Run()
 }

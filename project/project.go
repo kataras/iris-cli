@@ -44,6 +44,8 @@ type Project struct {
 	Files          []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
 	BuildFiles     []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
 	MD5PackageJSON []byte   `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
+
+	runner *exec.Cmd
 }
 
 func New(name, repo string) *Project {
@@ -314,25 +316,37 @@ func (p *Project) unzip(body []byte) error {
 	return nil
 }
 
-func (p *Project) Run(stdOut, stdErr io.Writer) error {
+func (p *Project) Run(stdout, stderr io.Writer) error {
 	if err := p.build(); err != nil {
 		return err
 	}
 
-	runCmd := getActionCommand(p.Dest, actionRun)
-	if runCmd == nil {
-		runCmd = utils.Command("go", "run", ".")
-	}
-
-	runCmd.Dir = p.Dest
-	runCmd.Stdout = stdOut
-	runCmd.Stderr = stdErr
+	runCmd := p.attachRunCommand()
+	runCmd.Stdout = stdout
+	runCmd.Stderr = stderr
 
 	var g errgroup.Group
 	g.Go(runCmd.Run)
 	// g.Go(p.watch)
 
 	return g.Wait()
+}
+
+func (p *Project) attachRunCommand() *exec.Cmd {
+	runCmd := getActionCommand(p.Dest, actionRun)
+	if runCmd == nil {
+		runCmd = utils.Command("go", "run", ".")
+	}
+
+	runCmd.Dir = p.Dest
+	if p.runner != nil {
+		runCmd.Stdout = p.runner.Stdout
+		runCmd.Stderr = p.runner.Stderr
+	}
+
+	p.runner = runCmd
+
+	return runCmd
 }
 
 const nodeModulesName = "node_modules"
@@ -545,6 +559,7 @@ func (p *Project) watch() error {
 	}
 
 	watcher.AddFilter = func(dir string) bool {
+		dir = filepath.ToSlash(dir)
 		// If it's a build directory should be ignored by the watcher.
 		for _, f := range p.BuildFiles {
 			if strings.HasSuffix(dir, f) {
@@ -557,16 +572,70 @@ func (p *Project) watch() error {
 
 	watcher.AddRecursively(p.Dest)
 
+	rerunBackend := func() error {
+		if err := utils.KillCommand(p.runner); err != nil {
+			return err
+		}
+
+		return p.attachRunCommand().Run()
+	}
+
+	rerun := func() error {
+		if err := p.build(); err != nil {
+			return err
+		}
+
+		return rerunBackend()
+	}
+
 	for {
 		select {
 		case <-watcher.Closed():
 			return nil
 		case evts := <-watcher.Events:
+			backendChanges := false
+			frontendChanges := false
+
+			// if many events, just build the whole project.
+			if len(evts) > 20 {
+				fmt.Println("bulk changes")
+				go rerun()
+				continue
+			}
+
 			for _, evt := range evts {
 				name := p.rel(evt.Name)
 
-				fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+				ext := ""
+				if idx := strings.LastIndexByte(name, '.'); idx > 0 && len(name)-1 > idx {
+					ext = name[idx:]
+				}
+
+				fmt.Printf("change: ext: %s\n", ext)
+
+				switch ext {
+				case ".go", ".mod":
+					backendChanges = true
+				case ".html", ".htm", ".js", ".ts", ".jsx", ".tsx", ".css", ".scss", ".less":
+					frontendChanges = true
+				}
+
+				// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+
 			}
+
+			if frontendChanges {
+				fmt.Println("frontend changes")
+				if err := p.build(); err != nil {
+					return err
+				}
+			}
+
+			if backendChanges {
+				fmt.Println("backend changes")
+				go rerunBackend()
+			}
+
 		}
 	}
 }
