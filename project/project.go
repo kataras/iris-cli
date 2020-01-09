@@ -53,7 +53,8 @@ type Project struct {
 	// TODO:
 	// Running is set automatically to true on `Run` and false on interrupt,
 	// it is used for third-parties software to check if a specific project is run under iris-cli.
-	Running bool `json:"running" yaml:"Running,omitempty" toml:"Running"`
+	Running        bool `json:"running" yaml:"Running,omitempty" toml:"Running"`
+	stdout, stderr io.Writer
 }
 
 const ProjectFilename = ".iris.yml"
@@ -311,17 +312,21 @@ func (p *Project) unzip(body []byte) error {
 }
 
 func (p *Project) Run(stdout, stderr io.Writer) error {
-	if err := p.build(); err != nil {
+	p.stdout = stdout
+	p.stderr = stderr
+
+	err := p.build()
+	if err != nil {
 		return err
 	}
 
-	runCmd := p.attachRunCommand()
-	runCmd.Stdout = stdout
-	runCmd.Stderr = stderr
-
 	var g errgroup.Group
 
-	g.Go(runCmd.Run)
+	if err := p.start(); err != nil {
+		return err
+	}
+
+	g.Go(p.runner.Wait)
 	if !p.DisableWatch {
 		g.Go(p.LiveReload.ListenAndServe)
 		g.Go(p.watch)
@@ -330,21 +335,33 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 	return g.Wait()
 }
 
-func (p *Project) attachRunCommand() *exec.Cmd {
-	runCmd := getActionCommand(p.Dest, actionRun)
-	if runCmd == nil {
-		runCmd = utils.Command("go", "run", ".")
+func (p *Project) start() error {
+	if runCmd := getActionCommand(p.Dest, actionRun); runCmd != nil {
+		runCmd.Dir = p.Dest
+		runCmd.Stdout = p.stdout
+		runCmd.Stderr = p.stderr
+		if err := runCmd.Start(); err != nil {
+			return err
+		}
+
+		p.runner = runCmd
+		return nil
 	}
 
-	runCmd.Dir = p.Dest
-	if p.runner != nil {
-		runCmd.Stdout = p.runner.Stdout
-		runCmd.Stderr = p.runner.Stderr
+	bin := utils.FormatExecutable(filepath.Base(p.Dest))
+	buildCmd := utils.Command("go", "build", "-o", bin, ".")
+	buildCmd.Dir = p.Dest
+	if b, err := buildCmd.CombinedOutput(); err != nil {
+		return errors.New(err.Error() + "\n" + string(b)) // don't use fmt.Errorf here for any case that the format contains vars.
+	}
+
+	runCmd, err := utils.StartExecutable(p.Dest, bin, p.stdout, p.stderr)
+	if err != nil {
+		return err
 	}
 
 	p.runner = runCmd
-
-	return runCmd
+	return nil
 }
 
 const nodeModulesName = "node_modules"
@@ -591,7 +608,48 @@ func (p *Project) watch() error {
 				return err
 			}
 
-			err = p.attachRunCommand().Run()
+			// err = p.attachRunCommand().Run()
+			err = p.start()
+			if err == nil {
+				// TODO: find a way to get the iris app's listening port in order to support
+				// port navigation too on browser live reload feature.
+				// First, use go build -o currentdir+exec_ext . to have a static path of the executable file and its name
+				// and also give the ability for the external iris app to use relative paths for file conf files and e.t.c.
+				//
+				// 1. instead of using cmd /c and /bin/sh -c to start the program, run it directly
+				// that way we have the correct p.runner.Process.Pid and not its parent, however that may fail due permission issues on unix (not tested yet but I assume).
+				// OR
+				//  2. use that executable name to get the proc ID
+				//   2.1 use that proc ID to get and parse the listening PORT
+				/*
+					using "github.com/keybase/go-ps"
+						bin := utils.FormatExecutable(filepath.Base(p.Dest))
+
+						time.Sleep(1 * time.Second)
+
+						procs, _ := ps.Processes()
+						for _, proc := range procs {
+							println(proc.Executable())
+							if proc.Executable() == bin {
+								println("========= FOUND ========")
+								println(proc.Pid())
+							}
+						}
+
+						 want to get the port listening through:
+							C:\Users\kataras>netstat -a -n -p tcp -o | find "7104"
+							TCP    0.0.0.0:9080           0.0.0.0:0              LISTENING       7104
+
+					This works but I don't want to use time.Sleep just to wait from
+					cmd /c or /bin/sh -c shells to fork and start the process of our executable file.
+				*/
+				// OR
+				// 3. let iris tell us what it's port by creating a temp file in the current working directory
+				// or by changing the .iris.yml configuration file itself to a Running: Port: $PORT and then
+				// let live reloader read it and send it to the client side of the app.
+				//
+				// Maybe browser live reload on backend addr/port changing does not worth such a waste of time.
+			}
 		}
 
 		return

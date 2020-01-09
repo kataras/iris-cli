@@ -13,7 +13,7 @@ type LiveReload struct {
 	Disable bool `json:"disable" yaml:"Disable" toml:"Disable"`
 
 	// No, the server should have the localhost everywhere, accept just the port.
-	// // Addr is the host:port adress of the websocket server.
+	// // Addr is the host:port address of the websocket server.
 	// // The javascript file which listens on updates and should be included on the application
 	// // is served through: {Addr}/livereload.js.
 	// // The websocket endpoint is {Addr}/livereload.
