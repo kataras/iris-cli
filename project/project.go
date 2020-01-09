@@ -37,41 +37,42 @@ type Project struct {
 	// Post installation.
 	// DisableInlineCommands disables source code comments stats with // $ _command_ to execute on "run" command.
 	DisableInlineCommands bool `json:"disable_inline_commands" yaml:"DisableInlineCommands" toml:"DisableInlineCommands"`
+	// DisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
+	DisableWatch bool        `json:"disable_watch" yaml:"DisableWatch" toml:"DisableWatch"`
+	LiveReload   *LiveReload `json:"livereload" yaml:"LiveReload" toml:"LiveReload"`
+
 	// Relative path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files,
 	// just the project's ones before build.
-
 	Files          []string `json:"files,omitempty" yaml:"Files" toml:"Files"`
 	BuildFiles     []string `json:"build_files" yaml:"BuildFiles" toml:"BuildFiles"` // New directories and files, relatively to p.Dest, that are created by build (makefile, build script, npm install & npm run build).
 	MD5PackageJSON []byte   `json:"md5_package_json" yaml:"MD5PackageJSON" toml:"MD5PackageJSON"`
 
 	runner *exec.Cmd
 
-	// DisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
-	DisableWatch bool `json:"disable_watch" yaml:"DisableWatch" toml:"DisableWatch"`
-}
-
-func New(name, repo string) *Project {
-	name, version := utils.SplitNameVersion(name) // i.e. github.com/author/project@v12
-	if version == "" {
-		repo, version = utils.SplitNameVersion(repo) // check the repo suffix too.
-		if version == "" {
-			version = "master"
-		}
-	}
-
-	return &Project{
-		Name:    name,
-		Repo:    repo,
-		Version: version,
-		Dest:    "",
-		Module:  "",
-	}
+	// TODO:
+	// Running is set automatically to true on `Run` and false on interrupt,
+	// it is used for third-parties software to check if a specific project is run under iris-cli.
+	Running bool `json:"running" yaml:"Running,omitempty" toml:"Running"`
 }
 
 const ProjectFilename = ".iris.yml"
 
+func (p *Project) setDefaults() {
+	if p.LiveReload == nil {
+		p.LiveReload = NewLiveReload()
+	}
+
+	if p.DisableWatch {
+		// fixes configuration file if Project.Watch is not enabled
+		// but Project.LiveReload is enabled.
+		p.LiveReload.Disable = true
+	}
+}
+
 func (p *Project) SaveToDisk() error {
+	p.setDefaults()
+
 	projectFile := filepath.Join(p.Dest, ProjectFilename)
 
 	outFile, err := os.OpenFile(projectFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
@@ -122,6 +123,7 @@ func LoadFromDisk(path string) (*Project, error) {
 		return nil, err
 	}
 
+	p.setDefaults()
 	return p, nil
 }
 
@@ -142,16 +144,6 @@ func (p *Project) Install() error {
 	if err != nil {
 		return err
 	}
-
-	// Do not build on Install,
-	// Build is another step
-	// and it runs automatically on Run if was not built
-	// (TODO: or source code changed).
-	//
-	// err = p.build()
-	// if err != nil {
-	// 	return err
-	// }
 
 	return p.SaveToDisk()
 }
@@ -331,6 +323,7 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 
 	g.Go(runCmd.Run)
 	if !p.DisableWatch {
+		g.Go(p.LiveReload.ListenAndServe)
 		g.Go(p.watch)
 	}
 
@@ -580,20 +573,28 @@ func (p *Project) watch() error {
 
 	watcher.AddRecursively(p.Dest)
 
-	rerunBackend := func() error {
-		if err := utils.KillCommand(p.runner); err != nil {
-			return err
+	rerun := func(frontend, backend bool) (err error) {
+		if frontend {
+			if err = p.build(); err != nil {
+				return err
+			}
+
+			defer func() {
+				if err == nil {
+					p.LiveReload.SendReloadSignal()
+				}
+			}()
 		}
 
-		return p.attachRunCommand().Run()
-	}
+		if backend {
+			if err = utils.KillCommand(p.runner); err != nil {
+				return err
+			}
 
-	rerun := func() error {
-		if err := p.build(); err != nil {
-			return err
+			err = p.attachRunCommand().Run()
 		}
 
-		return rerunBackend()
+		return
 	}
 
 	for {
@@ -601,12 +602,12 @@ func (p *Project) watch() error {
 		case <-watcher.Closed():
 			return nil
 		case evts := <-watcher.Events:
-			backendChanges := false
-			frontendChanges := false
+			backendChanged := false
+			frontendChanged := false
 
 			// if many events, just build the whole project.
 			if len(evts) > 20 {
-				go rerun()
+				go rerun(true, true)
 				continue
 			}
 
@@ -621,13 +622,13 @@ func (p *Project) watch() error {
 
 				switch ext {
 				case ".go", ".mod":
-					backendChanges = true
-				case ".html", ".htm",
+					backendChanged = true
+				case ".html", ".htm", ".svelte",
 					".js", ".ts",
 					".jsx", ".tsx",
 					".css", ".scss", ".less",
 					".json":
-					frontendChanges = true
+					frontendChanged = true
 				case ".yml", ".toml", ".tml":
 					if name == ProjectFilename {
 						// skip if it's the .iris.yml project file.
@@ -635,22 +636,14 @@ func (p *Project) watch() error {
 					}
 
 					// probably a server configuration file.
-					backendChanges = true
+					backendChanged = true
 				case ".proto":
-					frontendChanges = true
-					backendChanges = true
+					frontendChanged = true
+					backendChanged = true
 				}
 			}
 
-			if frontendChanges {
-				if err := p.build(); err != nil {
-					return err
-				}
-			}
-
-			if backendChanges {
-				go rerunBackend()
-			}
+			go rerun(frontendChanged, backendChanged)
 		}
 	}
 }
