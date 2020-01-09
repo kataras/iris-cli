@@ -28,7 +28,7 @@ func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, erro
 	cmd.Dir = dir
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	f, err := pty.Start(c) // it runs cmd.Start().
+	_, err := pty.Start(cmd) // it runs cmd.Start().
 	if err != nil {
 		return nil, err
 	}
