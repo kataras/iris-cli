@@ -51,6 +51,11 @@ func runCommand() *cobra.Command {
 			}
 
 			if err != nil {
+				if err == project.ErrProjectFileNotExist {
+					cmd.Println(err)
+					cmd.Println("run iris-cli init command to create a new one")
+					return nil
+				}
 				return err
 			}
 

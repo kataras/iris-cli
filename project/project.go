@@ -687,7 +687,7 @@ func (p *Project) watch() error {
 					".css", ".scss", ".less",
 					".json":
 					frontendChanged = true
-				case ".yml", ".toml", ".tml":
+				case ".yml", ".toml", ".tml", ".ini":
 					if name == ProjectFilename {
 						// skip if it's the .iris.yml project file.
 						continue
@@ -735,6 +735,10 @@ func (p *Project) Unistall() (err error) {
 	// remove go.sum (which can be automatically generated if not existed because of a remote project with .gitignore).
 	goSumFile := filepath.Join(p.Dest, "go.sum")
 	os.Remove(goSumFile) // ignore error.
+
+	// try to remove executable.
+	binFile := filepath.Join(p.Dest, utils.FormatExecutable(filepath.Base(p.Dest)))
+	os.Remove(binFile)
 
 	// remove project file too.
 	projectFile := filepath.Join(p.Dest, ProjectFilename)
