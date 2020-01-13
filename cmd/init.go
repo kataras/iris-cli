@@ -24,7 +24,7 @@ func initCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "init",
 		// The directory should not contain any build files/should be clean.
-		Short:         "Init creates the iris project file from a LOCAL git repository. Useful for custom projects",
+		Short:         "Init creates the iris project file from a git repository or local directory. Useful for custom projects",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "."
@@ -37,18 +37,57 @@ func initCommand() *cobra.Command {
 				return err
 			}
 
-			p, err := newProjectFromLocalGitRepository(projectPath)
+			name, repo, version, err := fromLocalGitRepository(projectPath)
 			if err != nil {
 				if err != errNotGitRepository {
 					return err
 				}
 
-				// TODO:
-				// try other way.
-				// err =
+				name = filepath.Base(projectPath)
+				repo = ""
+				version = "master"
+				// err = nil
+			}
+
+			files, err := findFiles(projectPath)
+			if err != nil {
+				if err != errGitIgnoreFileMissing {
+					return err
+				}
+				// else all files.
+				err = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
+					if path == projectPath {
+						return nil // skip the project path itself ( we don't want to remove the folder itself on unistall, just its files).
+					}
+
+					rel, err := filepath.Rel(projectPath, path)
+					if err != nil {
+						return err
+					}
+
+					files = append(files, filepath.ToSlash(rel))
+					return nil
+				})
+
 				if err != nil {
 					return err
 				}
+			}
+
+			if len(files) == 0 {
+				return fmt.Errorf("empty directory")
+			}
+
+			// Get go module path.
+			module := findModulePath(projectPath)
+
+			p := &project.Project{
+				Name:    name,
+				Repo:    repo,
+				Version: version,
+				Dest:    filepath.ToSlash(projectPath),
+				Module:  module,
+				Files:   files, // if git repository then on unistall command the .git directory remains, if community wants to remove that too then will do.
 			}
 
 			return p.SaveToDisk()
@@ -59,15 +98,15 @@ func initCommand() *cobra.Command {
 
 var errNotGitRepository = fmt.Errorf("not a git repository")
 
-func newProjectFromLocalGitRepository(projectPath string) (*project.Project, error) {
+func fromLocalGitRepository(projectPath string) (string, string, string, error) {
 	r, err := git.PlainOpen(projectPath)
 	if err != nil {
-		return nil, errNotGitRepository
+		return "", "", "", errNotGitRepository
 	}
 
 	remotes, err := r.Remotes()
 	if err != nil {
-		return nil, err
+		return "", "", "", err
 	}
 
 	// Find github remote repo, if any.
@@ -99,40 +138,29 @@ func newProjectFromLocalGitRepository(projectPath string) (*project.Project, err
 	}
 
 	if err != nil {
-		return nil, err
+		return "", "", "", err
 	}
 
 	version = filepath.Base(version)
 
-	// Find go module path.
-	goModFile := filepath.Join(projectPath, "go.mod")
-	if !utils.Exists(goModFile) {
-		return nil, fmt.Errorf("project missing <go.mod> file")
-	}
-	b, err := ioutil.ReadFile(goModFile)
-	if err != nil {
-		return nil, err
-	}
+	return filepath.Base(repo), repo, version, nil
+}
 
-	module := string(parser.ModulePath(b))
+var errGitIgnoreFileMissing = fmt.Errorf(".gitignore is missing")
 
-	// t, err := r.Worktree()
-	// if err != nil {
-	// 	return err
-	// }
-	// patterns, _ := gitignore.ReadPatterns(t.Filesystem, nil)
-	// patterns = append(patterns, t.Excludes...)
-	// if len(patterns) > 0 {
-	// 	m := gitignore.NewMatcher(patterns)
-
-	var files []string
-
+func findFiles(projectPath string) ([]string, error) {
+	// Read for build files at a .gitignore (even if this is not a git fully project)
 	gitIgnoreFile := filepath.Join(projectPath, ".gitignore")
+	if !utils.Exists(gitIgnoreFile) {
+		return nil, errGitIgnoreFileMissing
+	}
+
 	ignore, err := gitignore.NewFromFile(gitIgnoreFile)
 	if err != nil {
 		return nil, err
 	}
 
+	var files []string
 	err = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
 		if path == projectPath {
 			// skip root itself.
@@ -179,16 +207,20 @@ func newProjectFromLocalGitRepository(projectPath string) (*project.Project, err
 		}
 	}
 
-	p := &project.Project{
-		Name:    filepath.Base(repo),
-		Repo:    repo,
-		Version: version,
-		Dest:    filepath.ToSlash(projectPath),
-		Module:  module,
-		Files:   files,
+	return files, nil
+}
+
+func findModulePath(projectPath string) string {
+	goModFile := filepath.Join(projectPath, "go.mod")
+	if !utils.Exists(goModFile) {
+		return ""
+	}
+	b, err := ioutil.ReadFile(goModFile)
+	if err != nil {
+		return ""
 	}
 
-	return p, nil
+	return string(parser.ModulePath(b))
 }
 
 func getCurrentBranchFromRepository(repository *git.Repository) (string, error) {
