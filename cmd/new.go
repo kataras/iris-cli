@@ -20,8 +20,9 @@ func newCommand() *cobra.Command {
 		reg = project.NewRegistry()
 
 		opts = project.Project{
-			Version: "master",
-			Dest:    "./",
+			Version:            "master",
+			Dest:               "./",
+			NpmBuildScriptName: project.ActionBuild,
 			Reader: func(r io.Reader) ([]byte, error) {
 				tmpl := `{{etime . "%s elapsed"}} {{speed . }}`
 				// Content-Length is not available

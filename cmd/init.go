@@ -82,12 +82,13 @@ func initCommand() *cobra.Command {
 			module := findModulePath(projectPath)
 
 			p := &project.Project{
-				Name:    name,
-				Repo:    repo,
-				Version: version,
-				Dest:    filepath.ToSlash(projectPath),
-				Module:  module,
-				Files:   files, // if git repository then on unistall command the .git directory remains, if community wants to remove that too then will do.
+				Name:               name,
+				Repo:               repo,
+				Version:            version,
+				Dest:               filepath.ToSlash(projectPath),
+				Module:             module,
+				Files:              files, // if git repository then on unistall command the .git directory remains, if community wants to remove that too then will do.
+				NpmBuildScriptName: project.ActionBuild,
 			}
 
 			return p.SaveToDisk()

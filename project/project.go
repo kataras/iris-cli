@@ -37,6 +37,12 @@ type Project struct {
 	// Post installation.
 	// DisableInlineCommands disables source code comments stats with // $ _command_ to execute on "run" command.
 	DisableInlineCommands bool `json:"disable_inline_commands" yaml:"DisableInlineCommands" toml:"DisableInlineCommands"`
+	// DisableNpmInstall if `Run` and watch should NOT run npm install on first ran (and package.json changes).
+	// Defaults to false.
+	DisableNpmInstall bool `json:"disable_npm_install" yaml:"DisableNpmInstall" toml:"DisableNpmInstall"`
+	// NpmBuildScriptName the package.json -> scripts[name] to execute on run and frontend changes.
+	// Defaults to "build".
+	NpmBuildScriptName string `json:"npm_build_script_name" yaml:"NpmBuildScriptName" toml:"NpmBuildScriptName"`
 	// DisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
 	DisableWatch bool        `json:"disable_watch" yaml:"DisableWatch" toml:"DisableWatch"`
 	LiveReload   *LiveReload `json:"livereload" yaml:"LiveReload" toml:"LiveReload"`
@@ -336,7 +342,7 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 }
 
 func (p *Project) start() error {
-	if runCmd := getActionCommand(p.Dest, actionRun); runCmd != nil {
+	if runCmd := getActionCommand(p.Dest, ActionRun); runCmd != nil {
 		runCmd.Dir = p.Dest
 		runCmd.Stdout = p.stdout
 		runCmd.Stderr = p.stderr
@@ -432,7 +438,7 @@ func (p *Project) build() error {
 	defer watcher.Close()
 
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
-	buildCmd := getActionCommand(p.Dest, actionBuild)
+	buildCmd := getActionCommand(p.Dest, ActionBuild)
 	if buildCmd != nil {
 		return runCmd(buildCmd, p.Dest)
 	}
@@ -464,38 +470,42 @@ func (p *Project) build() error {
 
 		b, err := ioutil.ReadFile(f)
 		if err != nil {
-			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
+			return fmt.Errorf("%s: package.json: %v", ActionBuild, err)
 		}
 
-		// Run "npm install" only when package.json changed since last build
-		// or when node_modules missing.
-		shouldNpmInstall := false
-		if md5b := md5.Sum(b); !bytes.Equal(p.MD5PackageJSON, md5b[:]) {
-			p.MD5PackageJSON = md5b[:]
-			shouldNpmInstall = true
-		}
+		if !p.DisableNpmInstall {
+			// Run "npm install" only when package.json changed since last build
+			// or when node_modules missing.
+			shouldNpmInstall := false
+			if md5b := md5.Sum(b); !bytes.Equal(p.MD5PackageJSON, md5b[:]) {
+				p.MD5PackageJSON = md5b[:]
+				shouldNpmInstall = true
+			}
 
-		if !utils.Exists(filepath.Join(dir, nodeModulesName)) {
-			shouldNpmInstall = true
-		}
+			if !utils.Exists(filepath.Join(dir, nodeModulesName)) {
+				shouldNpmInstall = true
+			}
 
-		if shouldNpmInstall {
-			installCmd := utils.Command(npmBin, "install")
-			if err = runCmd(installCmd, dir); err != nil {
-				return err
+			if shouldNpmInstall {
+				installCmd := utils.Command(npmBin, "install")
+				if err = runCmd(installCmd, dir); err != nil {
+					return err
+				}
 			}
 		}
 
-		// Check if package.json contains a build action and run it.
-		var v packageJSON
-		if err = json.Unmarshal(b, &v); err != nil {
-			return fmt.Errorf("%s: package.json: %v", actionBuild, err)
-		}
+		if p.NpmBuildScriptName != "" {
+			// Check if package.json contains a build action and run it.
+			var v packageJSON
+			if err = json.Unmarshal(b, &v); err != nil {
+				return fmt.Errorf("%s: package.json: %v", ActionBuild, err)
+			}
 
-		if _, ok := v.Scripts[actionBuild]; ok {
-			buildCmd := utils.Command(npmBin, "run", actionBuild)
-			if err = runCmd(buildCmd, dir); err != nil {
-				return err
+			if _, ok := v.Scripts[ActionBuild]; ok {
+				buildCmd := utils.Command(npmBin, "run", ActionBuild)
+				if err = runCmd(buildCmd, dir); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -660,14 +670,17 @@ func (p *Project) watch() error {
 		case <-watcher.Closed():
 			return nil
 		case evts := <-watcher.Events:
-			backendChanged := false
-			frontendChanged := false
-
 			// if many events, just build the whole project.
 			if len(evts) > 20 {
 				go rerun(true, true)
 				continue
 			}
+
+			backendChanged := false
+			frontendChanged := false
+
+			// TODO: if the process is slow we must collect more events until build process finishes
+			// (or cancel the previous with exec.Command with context?)
 
 			for _, evt := range evts {
 				name := p.rel(evt.Name)
@@ -746,8 +759,8 @@ func (p *Project) Unistall() (err error) {
 }
 
 const (
-	actionRun   = "run"
-	actionBuild = "build"
+	ActionRun   = "run"
+	ActionBuild = "build"
 )
 
 func getActionCommand(path string, action string) *exec.Cmd {
