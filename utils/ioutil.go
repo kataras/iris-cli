@@ -240,6 +240,12 @@ func GetFilesDiff(rootDir string) (func() []string, error) {
 	return collect, nil
 }
 
+// IsInsideDocker reports whether the iris-cli is running through a docker container.
+func IsInsideDocker() bool {
+	_, err := os.Stat("/.dockerenv")
+	return err == nil || os.IsExist(err)
+}
+
 const (
 	FileCreate = fsnotify.Create
 	FileWrite  = fsnotify.Write

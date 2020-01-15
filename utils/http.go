@@ -2,6 +2,7 @@ package utils
 
 import (
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,14 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 	return ioutil.ReadAll(r)
 }
 
+var httpClient = &http.Client{
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: IsInsideDocker(),
+		},
+	},
+}
+
 // DownloadReader returns a response reader.
 func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.ReadCloser, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -39,7 +48,7 @@ func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.R
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

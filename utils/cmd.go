@@ -5,6 +5,7 @@ package utils
 import (
 	"io"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -30,6 +31,17 @@ func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, erro
 	cmd.Stderr = stderr
 	_, err := pty.Start(cmd) // it runs cmd.Start().
 	if err != nil {
+		if strings.Contains(err.Error(), "operation not permitted") {
+			cmd = Command(bin)
+			cmd.Dir = dir
+			cmd.Stdout = stdout
+			cmd.Stderr = stderr
+			if err = cmd.Start(); err != nil {
+				return nil, err
+			}
+
+			return cmd, nil
+		}
 		return nil, err
 	}
 
