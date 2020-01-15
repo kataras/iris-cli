@@ -31,18 +31,19 @@ func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, erro
 	cmd.Stderr = stderr
 	_, err := pty.Start(cmd) // it runs cmd.Start().
 	if err != nil {
-		if strings.Contains(err.Error(), "operation not permitted") {
-			cmd = Command(bin)
-			cmd.Dir = dir
-			cmd.Stdout = stdout
-			cmd.Stderr = stderr
-			if err = cmd.Start(); err != nil {
-				return nil, err
-			}
-
-			return cmd, nil
+		// fork/exec /bin/sh: operation not permitted
+		if !strings.Contains(err.Error(), "operation not permitted") {
+			return nil, err
 		}
-		return nil, err
+
+		cmd = Command(bin)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Dir = dir
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		if err = cmd.Start(); err != nil {
+			return nil, err
+		}
 	}
 
 	return cmd, err
