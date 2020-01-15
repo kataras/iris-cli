@@ -163,6 +163,10 @@ func findFiles(projectPath string) ([]string, error) {
 
 	var files []string
 	err = filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
 		if path == projectPath {
 			// skip root itself.
 			return nil

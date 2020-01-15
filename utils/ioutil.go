@@ -171,6 +171,75 @@ func FindMatches(rootDir, pattern, exclude string, listDirectories bool) ([]stri
 	return matches, err
 }
 
+// GetAllFiles returns all files and directories from "rootDir".
+// The return "files" as fullpaths.
+func GetAllFiles(rootDir string) (files []string, err error) {
+	err = filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if path == rootDir {
+			return nil
+		}
+
+		files = append(files, path)
+		return nil
+	})
+
+	return
+}
+
+// GetFilesDiff returns a function which collects
+// new files or directories since `GetFilesDiff` called.
+// Its return function's slice contains a relative to "rootDir" filenames.
+func GetFilesDiff(rootDir string) (func() []string, error) {
+	prevFiles, err := GetAllFiles(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	collect := func() []string {
+		var newFiles []string
+
+		err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if path == rootDir {
+				return nil
+			}
+
+			ignore := false
+			for i, prev := range prevFiles {
+				if path == prev {
+					ignore = true
+					prevFiles = append(prevFiles[:i], prevFiles[i+1:]...)
+					break
+				}
+			}
+
+			if !ignore {
+				newFiles = append(newFiles, filepath.ToSlash(strings.TrimPrefix(path, filepath.FromSlash(rootDir)+string(os.PathSeparator))))
+				if info.IsDir() { // if it's a new directory let's just add this and not its contents.
+					return filepath.SkipDir
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return nil
+		}
+
+		return newFiles
+	}
+
+	return collect, nil
+}
+
 const (
 	FileCreate = fsnotify.Create
 	FileWrite  = fsnotify.Write

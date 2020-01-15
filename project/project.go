@@ -389,58 +389,23 @@ func (p *Project) rel(name string) string {
 }
 
 func (p *Project) build() error {
-	// Add any new directories and files to build files and save the project on built.
-	watcher, err := utils.NewWatcher()
+	newFilesFn, err := utils.GetFilesDiff(p.Dest)
 	if err != nil {
-		return fmt.Errorf("build: watcher: %s: %v", p.Dest, err)
+		return err
 	}
-
-	watcher.AddRecursively(p.Dest)
-	go func() {
-		for {
-			select {
-			case evts := <-watcher.Events:
-				for _, evt := range evts {
-					name := p.rel(evt.Name)
-
-					// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
-
-					switch evt.Op {
-					case utils.FileCreate:
-						exists := false
-						for _, buildName := range p.BuildFiles {
-							if buildName == name {
-								exists = true
-								break
-							}
-						}
-
-						if !exists {
-							p.BuildFiles = append(p.BuildFiles, name)
-						}
-
-					case utils.FileRemove:
-						for i, buildName := range p.BuildFiles {
-							if buildName == name {
-								copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
-								p.BuildFiles[len(p.BuildFiles)-1] = ""
-								p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
-								break
-							}
-						}
-					}
-				}
-			}
-		}
-	}()
-
-	defer p.SaveToDisk()
-	defer watcher.Close()
 
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
 	buildCmd := getActionCommand(p.Dest, ActionBuild)
 	if buildCmd != nil {
-		return runCmd(buildCmd, p.Dest)
+		if err := runCmd(buildCmd, p.Dest); err != nil {
+			return err
+		}
+
+		if buildFiles := newFilesFn(); len(buildFiles) > 0 {
+			p.BuildFiles = buildFiles
+		}
+
+		return p.SaveToDisk()
 	}
 
 	// Locate any package.json project files and
@@ -573,7 +538,13 @@ func (p *Project) build() error {
 		}
 	}
 
-	return nil
+	// Add any new directories and files to build files and save the project on built.
+	// p.BuildFiles = append(p.BuildFiles, newFilesFn()...)
+	if buildFiles := newFilesFn(); len(buildFiles) > 0 {
+		p.BuildFiles = buildFiles
+	}
+
+	return p.SaveToDisk()
 }
 
 // TODO: not only rebuild frontend and reload server-side but add a browser live reload through a different websocket server (here)
