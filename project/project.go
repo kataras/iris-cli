@@ -3,6 +3,7 @@ package project
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/kataras/iris-cli/parser"
 	"github.com/kataras/iris-cli/utils"
 
+	"github.com/kataras/golog"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
@@ -61,6 +63,9 @@ type Project struct {
 	// it is used for third-parties software to check if a specific project is run under iris-cli.
 	Running        bool `json:"running" yaml:"Running,omitempty" toml:"Running"`
 	stdout, stderr io.Writer
+
+	// runningCommands chan context.CancelFunc
+	frontEndRunningCommands map[*exec.Cmd]context.CancelFunc
 }
 
 const ProjectFilename = ".iris.yml"
@@ -75,6 +80,8 @@ func (p *Project) setDefaults() {
 		// but Project.LiveReload is enabled.
 		p.LiveReload.Disable = true
 	}
+
+	p.frontEndRunningCommands = make(map[*exec.Cmd]context.CancelFunc) // make(chan context.CancelFunc, 20)
 }
 
 func (p *Project) SaveToDisk() error {
@@ -389,23 +396,69 @@ func (p *Project) rel(name string) string {
 }
 
 func (p *Project) build() error {
-	newFilesFn, err := utils.GetFilesDiff(p.Dest)
+	// Add any new directories and files to build files and save the project on built.
+	watcher, err := utils.NewWatcher()
 	if err != nil {
-		return err
+		return fmt.Errorf("build: watcher: %s: %v", p.Dest, err)
 	}
+
+	watcher.AddRecursively(p.Dest)
+	go func() {
+		for {
+			select {
+			case evts := <-watcher.Events:
+				for _, evt := range evts {
+					name := p.rel(evt.Name)
+
+					// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+
+					switch evt.Op {
+					case utils.FileCreate:
+						exists := false
+						for _, buildName := range p.BuildFiles {
+							if buildName == name {
+								exists = true
+								break
+							}
+						}
+
+						if !exists {
+							p.BuildFiles = append(p.BuildFiles, name)
+						}
+
+					case utils.FileRemove:
+						for i, buildName := range p.BuildFiles {
+							if buildName == name {
+								copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
+								p.BuildFiles[len(p.BuildFiles)-1] = ""
+								p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}()
+
+	defer p.SaveToDisk()
+	defer watcher.Close()
+
+	// newFilesFn, err := utils.GetFilesDiff(p.Dest)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// Try to build with "make", "nmake" or "build.bat", "build.sh".
 	buildCmd := getActionCommand(p.Dest, ActionBuild)
 	if buildCmd != nil {
-		if err := runCmd(buildCmd, p.Dest); err != nil {
-			return err
-		}
+		return runCmd(buildCmd, p.Dest)
 
-		if buildFiles := newFilesFn(); len(buildFiles) > 0 {
-			p.BuildFiles = buildFiles
-		}
+		// if buildFiles := newFilesFn(); len(buildFiles) > 0 {
+		// 	p.BuildFiles = buildFiles
+		// }
 
-		return p.SaveToDisk()
+		// return p.SaveToDisk()
 	}
 
 	// Locate any package.json project files and
@@ -452,7 +505,9 @@ func (p *Project) build() error {
 			}
 
 			if shouldNpmInstall {
-				installCmd := utils.Command(npmBin, "install")
+				installCmd, cancelFunc := utils.CommandWithCancel(npmBin, "install")
+				p.frontEndRunningCommands[installCmd] = cancelFunc
+				// defer cancelFunc()
 				if err = runCmd(installCmd, dir); err != nil {
 					return err
 				}
@@ -467,7 +522,9 @@ func (p *Project) build() error {
 			}
 
 			if _, ok := v.Scripts[ActionBuild]; ok {
-				buildCmd := utils.Command(npmBin, "run", ActionBuild)
+				buildCmd, cancelFunc := utils.CommandWithCancel(npmBin, "run", ActionBuild)
+				p.frontEndRunningCommands[buildCmd] = cancelFunc
+				// defer cancelFunc()
 				if err = runCmd(buildCmd, dir); err != nil {
 					return err
 				}
@@ -482,33 +539,31 @@ func (p *Project) build() error {
 		skipGenerateAssetsIndexes := make(map[int]struct{})
 
 		if !p.DisableInlineCommands {
-			for _, cmd := range res.Commands {
+			for _, c := range res.Commands {
+				cmd, cancelFunc := utils.CommandWithCancel(c.Name, c.Args...)
 				// Author's Note:
 				// track the executed commands: if go-bindata related
 				// with the same res.AssetDirs[x] then skip the manual go-bindata command execution
 				// which follows after <TODO>.
-				if !utils.Exists(cmd.Dir) {
+				if !utils.Exists(c.Dir) {
 					cmd.Dir = p.Dest
 				}
 
-				commandName := cmd.Args[0]
-
-				if commandName == "go-bindata" {
-					if len(cmd.Args) > 1 {
-						args := cmd.Args[1:]
-						for _, arg := range args {
-							for i, assetDir := range res.AssetDirs {
-								if assetDir.ShouldGenerated && filepath.ToSlash(assetDir.Dir+"/...") == arg {
-									// a custom command generates those assets.
-									skipGenerateAssetsIndexes[i] = struct{}{}
-								}
+				if c.Name == "go-bindata" {
+					for _, arg := range c.Args {
+						for i, assetDir := range res.AssetDirs {
+							if assetDir.ShouldGenerated && filepath.ToSlash(assetDir.Dir+"/...") == arg {
+								// a custom command generates those assets.
+								skipGenerateAssetsIndexes[i] = struct{}{}
 							}
 						}
 					}
 				}
 
+				p.frontEndRunningCommands[cmd] = cancelFunc
+				// defer cancelFunc()
 				if err = runCmd(cmd, ""); err != nil {
-					return fmt.Errorf("command <%s> failed:\n%v", commandName, err)
+					return fmt.Errorf("command <%s> failed:\n%v", c.Name, err)
 				}
 			}
 		}
@@ -531,7 +586,9 @@ func (p *Project) build() error {
 				"-o",
 				"bindata.go",
 			}, dirsToBuild...)
-			goBindata := utils.Command("go-bindata", args...)
+			goBindata, cancelFunc := utils.CommandWithCancel("go-bindata", args...)
+			p.frontEndRunningCommands[goBindata] = cancelFunc
+			// defer cancelFunc()
 			if err = runCmd(goBindata, p.Dest); err != nil {
 				return err
 			}
@@ -540,11 +597,13 @@ func (p *Project) build() error {
 
 	// Add any new directories and files to build files and save the project on built.
 	// p.BuildFiles = append(p.BuildFiles, newFilesFn()...)
-	if buildFiles := newFilesFn(); len(buildFiles) > 0 {
-		p.BuildFiles = buildFiles
-	}
+	// if buildFiles := newFilesFn(); len(buildFiles) > 0 {
+	// 	p.BuildFiles = buildFiles
+	// }
 
-	return p.SaveToDisk()
+	// return p.SaveToDisk()
+
+	return nil
 }
 
 // TODO: not only rebuild frontend and reload server-side but add a browser live reload through a different websocket server (here)
@@ -552,16 +611,35 @@ func (p *Project) build() error {
 // and let iris-cli parser take action based on that(?). A good start is to implement the LiveReload protocol: http://livereload.com/api/protocol/
 // or make a custom and fairly simple module for that.
 func (p *Project) watch() error {
+	println(`+-------------------------------------------------+
+|                                                 |
+|      ___ ____  ___ ____     ____ _     ___      |
+|     |_ _|  _ \|_ _/ ___|   / ___| |   |_ _|     |
+|      | |+ |_) || |\___ \  | |   | |    | |      |
+|      | |+  _ < | | ___) | | |___| |___ | |      |
+|     |___|_| \_\___|____/   \____|_____|___|     |
+|                                                 |
+|                                                 |
+|                                                 |
+|                                                 |
+|                             https://iris-go.com |
++-------------------------------------------------+
+`)
+
 	watcher, err := utils.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("watch: watcher: %s: %v", p.Dest, err)
 	}
 
 	watcher.AddFilter = func(dir string) bool {
-		dir = filepath.ToSlash(dir)
+		dir = strings.TrimPrefix(dir, p.Dest+"/")
+		if dir == p.Dest {
+			return true
+		}
+
 		// If it's a build directory should be ignored by the watcher.
 		for _, f := range p.BuildFiles {
-			if strings.HasSuffix(dir, f) {
+			if strings.HasPrefix(dir, f) {
 				return false
 			}
 		}
@@ -571,25 +649,61 @@ func (p *Project) watch() error {
 
 	watcher.AddRecursively(p.Dest)
 
+	for _, dir := range watcher.Dirs {
+		dir = strings.TrimPrefix(dir, p.Dest)
+		golog.Infof("Watching %s/*", dir)
+	}
+
+	// serving := new(uint32)
+
 	rerun := func(frontend, backend bool) (err error) {
+		watcher.Pause()
+		defer watcher.Continue()
+
+		desc := ""
 		if frontend {
+			desc += "√ Frontend"
+		}
+		if backend {
+			if desc != "" {
+				desc += " "
+			}
+			desc += "√ Backend"
+		}
+		golog.Infof("Change detected [%s]", desc)
+
+		// for !atomic.CompareAndSwapUint32(serving, 0, 1) {
+		// 	time.Sleep(25 * time.Millisecond)
+		// }
+
+		defer func() {
+			// atomic.StoreUint32(serving, 0)
+			if err == nil {
+				p.LiveReload.SendReloadSignal()
+			}
+		}()
+
+		if frontend {
+			for cmd, cancelFunc := range p.frontEndRunningCommands {
+				cancelFunc()
+				delete(p.frontEndRunningCommands, cmd)
+				cmd = nil
+			}
+
 			if err = p.build(); err != nil {
 				return err
 			}
-
-			defer func() {
-				if err == nil {
-					p.LiveReload.SendReloadSignal()
-				}
-			}()
 		}
 
 		if backend {
-			if err = utils.KillCommand(p.runner); err != nil {
-				return err
-			}
+			utils.KillCommand(p.runner)
+			// timeout := time.Second // give some time to release the TCP server port.
+			// for conn, _ := net.DialTimeout("tcp", ":8080", timeout); conn != nil; {
+			// 	// still open.
+			// 	conn.Close()
+			// 	time.Sleep(25 * time.Millisecond)
+			// }
 
-			// err = p.attachRunCommand().Run()
 			err = p.start()
 			if err == nil {
 				// TODO: find a way to get the iris app's listening port in order to support
@@ -662,6 +776,11 @@ func (p *Project) watch() error {
 					ext = name[idx:]
 				}
 
+				if ext == "" {
+					// skip...
+					continue
+				}
+
 				switch ext {
 				case ".go", ".mod":
 					backendChanged = true
@@ -682,10 +801,25 @@ func (p *Project) watch() error {
 				case ".proto":
 					frontendChanged = true
 					backendChanged = true
+				case ".exe", ".exe~", ".tmp":
+					continue
+				default:
+					// sometimes something like "app/build" is changed while building, although
+					// it's ignored by the watcher itself...and chmod is ignored, so:
+					// for _, f := range p.BuildFiles {
+					// 	if f == name {
+					// 		continue eventsLoop
+					// 	}
+					// }
+					// added ext == "" => skip ^
+					golog.Warnf("Unexpected file %s(change=%s) changed, is this a frontend or backend change? Please report it to Github issues.", name, evt.Op.String())
+					continue
 				}
 			}
 
-			go rerun(frontendChanged, backendChanged)
+			if frontendChanged || backendChanged {
+				go rerun(frontendChanged, backendChanged)
+			}
 		}
 	}
 }
@@ -811,7 +945,6 @@ func runCmd(cmd *exec.Cmd, dir string) error {
 	}
 
 	// println("Run: " + strings.Join(cmd.Args, " "))
-
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return errors.New(string(out))

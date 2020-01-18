@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"io/ioutil"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,10 +22,16 @@ type AssetDir struct {
 	ShouldGenerated bool
 }
 
+type SourceCommand struct {
+	Dir  string   // working dir, the filename dir.
+	Name string   // the command to run.
+	Args []string // any command's arguments.
+}
+
 // Result is the `Parse` return value.
 type Result struct {
 	AssetDirs []*AssetDir
-	Commands  []*exec.Cmd
+	Commands  []*SourceCommand
 }
 
 const dirOptionsDeclName = "iris.DirOptions"
@@ -94,6 +99,9 @@ func Parse(src interface{}) (*Result, error) {
 func parseFile(node *ast.File, filename string, res *Result) {
 	for _, comment := range node.Comments {
 		commentText := strings.TrimSpace(strings.TrimSuffix(comment.Text(), "\n"))
+		if !strings.HasPrefix(commentText, "$") {
+			continue
+		}
 		commands := strings.Split(commentText, "$")
 		for _, command := range commands {
 			command = strings.TrimSpace(command)
@@ -109,8 +117,11 @@ func parseFile(node *ast.File, filename string, res *Result) {
 				args = args[0:0]
 			}
 
-			cmd := utils.Command(name, args...)
-			cmd.Dir = filepath.Dir(filename)
+			cmd := &SourceCommand{
+				Dir:  filepath.Dir(filename),
+				Name: name,
+				Args: args,
+			}
 			res.Commands = append(res.Commands, cmd)
 		}
 	}

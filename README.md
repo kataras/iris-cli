@@ -4,6 +4,8 @@
 
 Iris Command Line Interface is your buddy when it comes to get started with [Iris](https://github.com/kataras/iris) and [Go](https://golang.org/dl).
 
+![](https://iris-go.com/images/iris-cli-screen.png)
+
 > This project is not finished. It is under active development. **TEST ONLY**
 
 ## Installation

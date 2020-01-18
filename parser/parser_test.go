@@ -58,15 +58,15 @@ func main(){
 	for i, cmd := range res.Commands {
 		nameArgs := strings.Split(expectedCommands[i], " ")
 
-		if expected, got := nameArgs[0], cmd.Args[0]; expected != got {
+		if expected, got := nameArgs[0], cmd.Name; expected != got {
 			t.Fatalf("[%d] expected parsed command to be: %s but got: %s", i, expected, got)
 		}
 
-		if expected, got := len(nameArgs[1:]), len(cmd.Args[1:]); expected != got {
+		if expected, got := len(nameArgs[1:]), len(cmd.Args); expected != got {
 			t.Fatalf("[%d] expected parsed command args length to be: %d but got: %d", i, expected, got)
 		}
 
-		if expected, got := strings.Join(nameArgs[1:], " "), strings.Join(cmd.Args[1:], " "); !reflect.DeepEqual(expected, got) {
+		if expected, got := strings.Join(nameArgs[1:], " "), strings.Join(cmd.Args, " "); !reflect.DeepEqual(expected, got) {
 			t.Fatalf("[%d] expected parsed command args to be: %s but got: %s", i, expected, got)
 		}
 

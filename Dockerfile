@@ -12,7 +12,8 @@ COPY . .
 RUN go build -o /bin/iris-cli .
 WORKDIR /bin
 RUN chmod +x ./iris-cli
-# docker build . -t iris-cli; docker run -i -t -p 8080:8080 iris-cli run react-typescript
+WORKDIR /myproject
+# docker image rm -f iris-cli;docker build . -t iris-cli; docker run -i -t -p 8080:8080 -v "C:\Users\kataras\Desktop\myproject:/myproject" iris-cli run svelte
  ENTRYPOINT ["iris-cli"]
 # FROM scratch
 # COPY --from=builder /bin/iris-cli /

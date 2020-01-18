@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -263,6 +264,10 @@ type Watcher struct {
 
 	Events chan []fsnotify.Event
 	closed chan struct{}
+
+	paused *uint32
+
+	Dirs []string
 }
 
 func (w *Watcher) AddRecursively(root string) error {
@@ -272,6 +277,7 @@ func (w *Watcher) AddRecursively(root string) error {
 	}
 
 	for _, dir := range dirs {
+		dir = filepath.ToSlash(dir)
 		if err = w.Add(dir); err != nil {
 			return err
 		}
@@ -289,6 +295,8 @@ func (w *Watcher) Add(dir string) error {
 		}
 	}
 
+	w.Dirs = append(w.Dirs, dir)
+
 	return w.watcher.Add(dir)
 }
 
@@ -303,6 +311,14 @@ func (w *Watcher) Close() error {
 
 func (w *Watcher) Closed() <-chan struct{} {
 	return w.closed
+}
+
+func (w *Watcher) Pause() bool {
+	return atomic.CompareAndSwapUint32(w.paused, 0, 1)
+}
+
+func (w *Watcher) Continue() bool {
+	return atomic.CompareAndSwapUint32(w.paused, 1, 0)
 }
 
 func (w *Watcher) start() {
@@ -323,8 +339,10 @@ func (w *Watcher) start() {
 			evts = append(evts, event)
 		case <-ticker.C:
 			if len(evts) > 0 {
-				w.Events <- evts
-				evts = evts[0:0]
+				if atomic.LoadUint32(w.paused) == 0 {
+					w.Events <- evts
+					evts = evts[0:0]
+				}
 			}
 		case <-w.closed:
 			ticker.Stop()
@@ -347,6 +365,7 @@ func NewWatcher() (*Watcher, error) {
 		watcher: fsWatcher,
 		Events:  make(chan []fsnotify.Event, 1),
 		closed:  make(chan struct{}, 1),
+		paused:  new(uint32),
 	}
 
 	go w.start()
