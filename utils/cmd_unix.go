@@ -35,7 +35,7 @@ func KillCommand(cmd *exec.Cmd) error {
 func FormatExecutable(bin string) string { return bin }
 
 func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, error) {
-	cmd, cancelFunc := Command("/bin/sh", "-c", bin)
+	cmd := Command("/bin/sh", "-c", bin)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // set parent group id in order to be kill-able.
 	cmd.Dir = dir
 	cmd.Stdout = stdout
@@ -47,7 +47,7 @@ func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, erro
 			return nil, err
 		}
 
-		cmd, cancelFunc = Command(bin)
+		cmd = Command(bin)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = dir
 		cmd.Stdout = stdout
