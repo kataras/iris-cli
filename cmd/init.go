@@ -60,6 +60,10 @@ func initCommand() *cobra.Command {
 						return nil // skip the project path itself ( we don't want to remove the folder itself on unistall, just its files).
 					}
 
+					if err != nil {
+						return err
+					}
+
 					rel, err := filepath.Rel(projectPath, path)
 					if err != nil {
 						return err

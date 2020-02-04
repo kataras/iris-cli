@@ -19,7 +19,15 @@ const supportedType = "file" // ignore dirs.
 
 // ListFiles returns a github repository's files.
 func ListFiles(repo, version string) ([]*File, error) {
-	repo, version = utils.SplitNameVersion(repo)
+	rep, v := utils.SplitNameVersion(repo)
+	if rep != "" {
+		repo = rep
+	}
+
+	if v != "" {
+		version = v
+	}
+
 	if version == "" {
 		version = "master"
 	}

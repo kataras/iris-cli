@@ -58,12 +58,7 @@ func (r multiCloser) Close() (err error) {
 // Exists tries to report whether the local physical "path" exists.
 func Exists(path string) bool {
 	if _, err := os.Stat(path); err != nil {
-		if os.IsExist(err) {
-			// It exists but it can cause other errors when reading but we don't care here.
-			return true
-		}
-
-		return false
+		return os.IsExist(err) // It exists but it can cause other errors when reading but we don't care here.
 	}
 
 	return true
@@ -111,26 +106,30 @@ func Dest(dest string) string {
 	return filepath.ToSlash(filepath.Clean(dest))
 }
 
+var defaultExcludePatterns = []string{
+	"*\\node_modules",
+	"*\\.git",
+}
+
 // FindMatches find all matches of a "pattern" reclusively.
 // Ordered by parent dir.
-func FindMatches(rootDir, pattern, exclude string, listDirectories bool) ([]string, error) {
+func FindMatches(rootDir, pattern string, listDirectories bool) ([]string, error) {
 	var matches []string
 	matchAny := pattern == "*"
-
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if exclude != "" {
-			rel, _ := filepath.Rel(rootDir, path)
+		rel, _ := filepath.Rel(rootDir, path)
+
+		for _, exclude := range defaultExcludePatterns {
 			if ignore, _ := filepath.Match(exclude, rel); ignore {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-
 		}
 
 		if info.IsDir() {
@@ -271,7 +270,7 @@ type Watcher struct {
 }
 
 func (w *Watcher) AddRecursively(root string) error {
-	dirs, err := FindMatches(root, "*", "*\\node_modules", true) // including "root" itself.
+	dirs, err := FindMatches(root, "*", true) // including "root" itself.
 	if err != nil {
 		return err
 	}

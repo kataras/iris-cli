@@ -58,9 +58,8 @@ type Project struct {
 
 	runner *exec.Cmd
 
-	// TODO:
 	// Running is set automatically to true on `Run` and false on interrupt,
-	// it is used for third-parties software to check if a specific project is run under iris-cli.
+	// it is used for third-parties software to check if a specific project is running under iris-cli.
 	Running        bool `json:"running" yaml:"Running,omitempty" toml:"Running"`
 	stdout, stderr io.Writer
 
@@ -261,7 +260,9 @@ func (p *Project) unzip(body []byte) error {
 		if f.FileInfo().IsDir() {
 			p.Files = append(p.Files, name)
 
-			os.MkdirAll(fpath, os.ModePerm)
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -325,6 +326,8 @@ func (p *Project) unzip(body []byte) error {
 }
 
 func (p *Project) Run(stdout, stderr io.Writer) error {
+	utils.RegisterOnInterrupt(p.onTerminate)
+
 	p.stdout = stdout
 	p.stderr = stderr
 
@@ -335,7 +338,7 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 
 	var g errgroup.Group
 
-	if err := p.start(); err != nil {
+	if err := p.run(); err != nil {
 		return err
 	}
 
@@ -346,6 +349,33 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 	}
 
 	return g.Wait()
+}
+
+func (p *Project) onTerminate() {
+	p.killFrontendProcesses()
+	p.killBackendProcesses()
+
+	if p.Running {
+		p.Running = false
+		p.SaveToDisk()
+	}
+}
+
+func (p *Project) run() (err error) {
+	// catch build or run errors and set running to false if errored on Run (with or without watch).
+	p.Running = true
+	if err = p.SaveToDisk(); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			p.onTerminate()
+		}
+	}()
+
+	err = p.start()
+	return
 }
 
 func (p *Project) start() error {
@@ -364,8 +394,9 @@ func (p *Project) start() error {
 	bin := utils.FormatExecutable(filepath.Base(p.Dest))
 	buildCmd := utils.Command("go", "build", "-o", bin, ".")
 	buildCmd.Dir = p.Dest
+
 	if b, err := buildCmd.CombinedOutput(); err != nil {
-		return errors.New(err.Error() + "\n" + string(b)) // don't use fmt.Errorf here for any case that the format contains vars.
+		return errors.New(string(b)) // don't use fmt.Errorf here for any case that the format contains vars.
 	}
 
 	runCmd, err := utils.StartExecutable(p.Dest, bin, p.stdout, p.stderr)
@@ -404,36 +435,33 @@ func (p *Project) build() error {
 
 	watcher.AddRecursively(p.Dest)
 	go func() {
-		for {
-			select {
-			case evts := <-watcher.Events:
-				for _, evt := range evts {
-					name := p.rel(evt.Name)
+		for evts := range watcher.Events {
+			for _, evt := range evts {
+				name := p.rel(evt.Name)
 
-					// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
+				// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
 
-					switch evt.Op {
-					case utils.FileCreate:
-						exists := false
-						for _, buildName := range p.BuildFiles {
-							if buildName == name {
-								exists = true
-								break
-							}
+				switch evt.Op {
+				case utils.FileCreate:
+					exists := false
+					for _, buildName := range p.BuildFiles {
+						if buildName == name {
+							exists = true
+							break
 						}
+					}
 
-						if !exists {
-							p.BuildFiles = append(p.BuildFiles, name)
-						}
+					if !exists {
+						p.BuildFiles = append(p.BuildFiles, name)
+					}
 
-					case utils.FileRemove:
-						for i, buildName := range p.BuildFiles {
-							if buildName == name {
-								copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
-								p.BuildFiles[len(p.BuildFiles)-1] = ""
-								p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
-								break
-							}
+				case utils.FileRemove:
+					for i, buildName := range p.BuildFiles {
+						if buildName == name {
+							copy(p.BuildFiles[i:], p.BuildFiles[i+1:])
+							p.BuildFiles[len(p.BuildFiles)-1] = ""
+							p.BuildFiles = p.BuildFiles[:len(p.BuildFiles)-1]
+							break
 						}
 					}
 				}
@@ -463,7 +491,7 @@ func (p *Project) build() error {
 
 	// Locate any package.json project files and
 	// npm install. Afterwards npm run build if scripts: "build" exists.
-	files, err := utils.FindMatches(p.Dest, "package.json", "*\\node_modules", false)
+	files, err := utils.FindMatches(p.Dest, "package.json", false)
 	if err != nil {
 		return err
 	}
@@ -606,10 +634,19 @@ func (p *Project) build() error {
 	return nil
 }
 
-// TODO: not only rebuild frontend and reload server-side but add a browser live reload through a different websocket server (here)
-// which an iris app's frontend javascript file should communicate, this can be happen through Iris side configuration to disable/enable it
-// and let iris-cli parser take action based on that(?). A good start is to implement the LiveReload protocol: http://livereload.com/api/protocol/
-// or make a custom and fairly simple module for that.
+func (p *Project) killFrontendProcesses() {
+	for cmd, cancelFunc := range p.frontEndRunningCommands {
+		cancelFunc()
+		delete(p.frontEndRunningCommands, cmd)
+	}
+}
+
+func (p *Project) killBackendProcesses() {
+	if p.runner != nil {
+		utils.KillCommand(p.runner)
+	}
+}
+
 func (p *Project) watch() error {
 	println(`+-------------------------------------------------+
 |                                                 |
@@ -644,7 +681,7 @@ func (p *Project) watch() error {
 			}
 		}
 
-		return true
+		return !strings.HasPrefix(dir, ".github")
 	}
 
 	watcher.AddRecursively(p.Dest)
@@ -656,7 +693,7 @@ func (p *Project) watch() error {
 
 	// serving := new(uint32)
 
-	rerun := func(frontend, backend bool) (err error) {
+	rerun := func(frontend, backend bool) {
 		watcher.Pause()
 		defer watcher.Continue()
 
@@ -676,6 +713,8 @@ func (p *Project) watch() error {
 		// 	time.Sleep(25 * time.Millisecond)
 		// }
 
+		var err error
+
 		defer func() {
 			// atomic.StoreUint32(serving, 0)
 			if err == nil {
@@ -684,19 +723,15 @@ func (p *Project) watch() error {
 		}()
 
 		if frontend {
-			for cmd, cancelFunc := range p.frontEndRunningCommands {
-				cancelFunc()
-				delete(p.frontEndRunningCommands, cmd)
-				cmd = nil
-			}
+			p.killFrontendProcesses()
 
 			if err = p.build(); err != nil {
-				return err
+				golog.Error(err)
 			}
 		}
 
 		if backend {
-			utils.KillCommand(p.runner)
+			p.killBackendProcesses()
 			// timeout := time.Second // give some time to release the TCP server port.
 			// for conn, _ := net.DialTimeout("tcp", ":8080", timeout); conn != nil; {
 			// 	// still open.
@@ -704,8 +739,10 @@ func (p *Project) watch() error {
 			// 	time.Sleep(25 * time.Millisecond)
 			// }
 
-			err = p.start()
-			if err == nil {
+			err = p.run()
+			if err != nil {
+				golog.Error(err)
+			} else {
 				// TODO: find a way to get the iris app's listening port in order to support
 				// port navigation too on browser live reload feature.
 				// First, use go build -o currentdir+exec_ext . to have a static path of the executable file and its name
@@ -746,8 +783,6 @@ func (p *Project) watch() error {
 				// Maybe browser live reload on backend addr/port changing does not worth such a waste of time.
 			}
 		}
-
-		return
 	}
 
 	for {
@@ -784,7 +819,7 @@ func (p *Project) watch() error {
 				switch ext {
 				case ".go", ".mod":
 					backendChanged = true
-				case ".html", ".htm", ".svelte",
+				case ".html", ".htm", ".svelte", ".md",
 					".js", ".ts",
 					".jsx", ".tsx",
 					".css", ".scss", ".less",

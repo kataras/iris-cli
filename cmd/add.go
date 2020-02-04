@@ -48,11 +48,7 @@ func addCommand() *cobra.Command {
 				}
 				sort.Strings(availableSnippets)
 				sort.Slice(availableSnippets, func(i, j int) bool {
-					if strings.HasSuffix(availableSnippets[i], ".go") {
-						return true
-					}
-
-					return false
+					return strings.HasSuffix(availableSnippets[i], ".go")
 				})
 
 				qs := []*survey.Question{

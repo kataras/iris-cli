@@ -29,7 +29,7 @@ func CommandWithCancel(name string, args ...string) (*exec.Cmd, context.CancelFu
 			if cmd.ProcessState == nil { // it's not already closed.
 				if cmd.Process != nil && cmd.Process.Pid > 0 {
 					// println("Killing: " + name + strings.Join(args, " "))
-					KillCommand(cmd)
+					_ = KillCommand(cmd)
 				}
 			}
 
