@@ -45,9 +45,9 @@ type Project struct {
 	// NpmBuildScriptName the package.json -> scripts[name] to execute on run and frontend changes.
 	// Defaults to "build".
 	NpmBuildScriptName string `json:"npm_build_script_name" yaml:"NpmBuildScriptName" toml:"NpmBuildScriptName"`
-	// DisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
-	DisableWatch bool        `json:"disable_watch" yaml:"DisableWatch" toml:"DisableWatch"`
-	LiveReload   *LiveReload `json:"livereload" yaml:"LiveReload" toml:"LiveReload"`
+
+	Watcher    Watcher     `json:"watcher" yaml:"Watcher" toml:"Watcher"`
+	LiveReload *LiveReload `json:"livereload" yaml:"LiveReload" toml:"LiveReload"`
 
 	// Relative path of the files and directories installed, because the folder may be not empty
 	// and when installation fails we don't want to delete any user-defined files,
@@ -67,6 +67,15 @@ type Project struct {
 	frontEndRunningCommands map[*exec.Cmd]context.CancelFunc
 }
 
+type Watcher struct {
+	//DisableDisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
+	Disable  bool     `json:"disable" yaml:"Disable" toml:"Disable"`
+	Backend  []string `json:"backend" yaml:"Backend" toml:"backend"`
+	Frontend []string `json:"frontend" yaml:"Frontend" toml:"frontend"`
+
+	IgnoreDirs []string `json:"ignore_dirs" yaml:"IgnoreDirs" toml:"IgnoreDirs"`
+}
+
 const ProjectFilename = ".iris.yml"
 
 func (p *Project) setDefaults() {
@@ -74,10 +83,38 @@ func (p *Project) setDefaults() {
 		p.LiveReload = NewLiveReload()
 	}
 
-	if p.DisableWatch {
+	if p.Watcher.Disable {
 		// fixes configuration file if Project.Watch is not enabled
 		// but Project.LiveReload is enabled.
 		p.LiveReload.Disable = true
+	}
+
+	if len(p.Watcher.Backend) == 0 {
+		p.Watcher.Backend = []string{
+			".go", ".mod",
+			".yml", ".toml", ".tml", ".ini",
+			".proto",
+		}
+	}
+
+	if len(p.Watcher.Frontend) == 0 {
+		p.Watcher.Frontend = []string{
+			".html", ".htm", ".svelte", ".md",
+			".js", ".ts",
+			".jsx", ".tsx",
+			".css", ".scss", ".less",
+			".json", ".proto",
+		}
+	}
+
+	if len(p.BuildFiles) > 0 && len(p.Watcher.IgnoreDirs) == 0 {
+		var ignoreDirs []string
+		for _, buildFile := range p.BuildFiles {
+			if utils.IsDir(buildFile) {
+				ignoreDirs = append(ignoreDirs, buildFile)
+			}
+		}
+		p.Watcher.IgnoreDirs = append(ignoreDirs, ".github")
 	}
 
 	p.frontEndRunningCommands = make(map[*exec.Cmd]context.CancelFunc) // make(chan context.CancelFunc, 20)
@@ -343,7 +380,7 @@ func (p *Project) Run(stdout, stderr io.Writer) error {
 	}
 
 	g.Go(p.runner.Wait)
-	if !p.DisableWatch {
+	if !p.Watcher.Disable {
 		g.Go(p.LiveReload.ListenAndServe)
 		g.Go(p.watch)
 	}
@@ -674,14 +711,13 @@ func (p *Project) watch() error {
 			return true
 		}
 
-		// If it's a build directory should be ignored by the watcher.
-		for _, f := range p.BuildFiles {
-			if strings.HasPrefix(dir, f) {
+		for _, ignoreDir := range p.Watcher.IgnoreDirs {
+			if strings.HasPrefix(dir, ignoreDir) {
 				return false
 			}
 		}
 
-		return !strings.HasPrefix(dir, ".github")
+		return true
 	}
 
 	watcher.AddRecursively(p.Dest)
@@ -804,6 +840,11 @@ func (p *Project) watch() error {
 
 			for _, evt := range evts {
 				name := p.rel(evt.Name)
+
+				if name == ProjectFilename {
+					continue
+				}
+
 				// fmt.Printf("| %s | %s\n", evt.Op.String(), name)
 
 				ext := ""
@@ -816,39 +857,22 @@ func (p *Project) watch() error {
 					continue
 				}
 
-				switch ext {
-				case ".go", ".mod":
-					backendChanged = true
-				case ".html", ".htm", ".svelte", ".md",
-					".js", ".ts",
-					".jsx", ".tsx",
-					".css", ".scss", ".less",
-					".json":
-					frontendChanged = true
-				case ".yml", ".toml", ".tml", ".ini":
-					if name == ProjectFilename {
-						// skip if it's the .iris.yml project file.
-						continue
+				for _, frontExt := range p.Watcher.Frontend {
+					if frontExt == ext {
+						frontendChanged = true
+						break
 					}
+				}
 
-					// probably a server configuration file.
-					backendChanged = true
-				case ".proto":
-					frontendChanged = true
-					backendChanged = true
-				case ".exe", ".exe~", ".tmp":
-					continue
-				default:
-					// sometimes something like "app/build" is changed while building, although
-					// it's ignored by the watcher itself...and chmod is ignored, so:
-					// for _, f := range p.BuildFiles {
-					// 	if f == name {
-					// 		continue eventsLoop
-					// 	}
-					// }
-					// added ext == "" => skip ^
-					golog.Warnf("Unexpected file %s(change=%s) changed, is this a frontend or backend change? Please report it to Github issues.", name, evt.Op.String())
-					continue
+				for _, backExt := range p.Watcher.Backend {
+					if backExt == ext {
+						backendChanged = true
+						break
+					}
+				}
+
+				if frontendChanged && backendChanged {
+					break // already catch everything we may want, break the evts loop.
 				}
 			}
 
