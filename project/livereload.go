@@ -83,7 +83,7 @@ func (l *LiveReload) HandleJS() http.HandlerFunc {
         console.info("LiveReload: terminated");
     };
     w.onmessage = function (message) {
-        // NOTE: full-reload, at least for the moment. Also if backend changed its port then we will get 404 here. 
+        // NOTE: full-reload, at least at the moment. Also if backend changed its port then we will get 404 here. 
         window.location.reload(); 
     };
 }());`, l.Port))

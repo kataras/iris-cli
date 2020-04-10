@@ -68,11 +68,13 @@ type Project struct {
 }
 
 type Watcher struct {
-	//DisableDisableWatch set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
-	Disable  bool     `json:"disable" yaml:"Disable" toml:"Disable"`
-	Backend  []string `json:"backend" yaml:"Backend" toml:"backend"`
+	// Disabhle set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
+	Disable bool `json:"disable" yaml:"Disable" toml:"Disable"`
+	// Backend file extensions.
+	Backend []string `json:"backend" yaml:"Backend" toml:"backend"`
+	// Frontend file extensions.
 	Frontend []string `json:"frontend" yaml:"Frontend" toml:"frontend"`
-
+	// IgnoreDirs directories prefix to ignore.
 	IgnoreDirs []string `json:"ignore_dirs" yaml:"IgnoreDirs" toml:"IgnoreDirs"`
 }
 
