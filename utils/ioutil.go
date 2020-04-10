@@ -47,7 +47,7 @@ func (r multiCloser) Close() (err error) {
 			if err == nil {
 				err = cErr
 			} else {
-				err = fmt.Errorf("%w\n%w", err, cErr)
+				err = fmt.Errorf("%v\n%v", err, cErr)
 			}
 		}
 	}
