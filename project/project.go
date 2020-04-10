@@ -68,7 +68,7 @@ type Project struct {
 }
 
 type Watcher struct {
-	// Disabhle set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
+	// Disable set to true to disable re-building and re-run the server and its frontend assets on file changes after first `Run`.
 	Disable bool `json:"disable" yaml:"Disable" toml:"Disable"`
 	// Backend file extensions.
 	Backend []string `json:"backend" yaml:"Backend" toml:"backend"`
@@ -78,6 +78,7 @@ type Watcher struct {
 	IgnoreDirs []string `json:"ignore_dirs" yaml:"IgnoreDirs" toml:"IgnoreDirs"`
 }
 
+// ProjectFilename is the current project's filename that is created on project creation (and automatically added to a .gitignore file if a git repository).
 const ProjectFilename = ".iris.yml"
 
 func (p *Project) setDefaults() {
