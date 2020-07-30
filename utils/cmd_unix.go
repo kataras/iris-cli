@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"path"
 	"strings"
 	"syscall"
 
@@ -35,27 +36,32 @@ func KillCommand(cmd *exec.Cmd) error {
 func FormatExecutable(bin string) string { return bin }
 
 func StartExecutable(dir, bin string, stdout, stderr io.Writer) (*exec.Cmd, error) {
-	cmd := Command("/bin/sh", "-c", bin)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // set parent group id in order to be kill-able.
-	cmd.Dir = dir
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	_, err := pty.Start(cmd) // it runs cmd.Start().
-	if err != nil {
-		// fork/exec /bin/sh: operation not permitted
-		if !strings.Contains(err.Error(), "operation not permitted") {
-			return nil, err
-		}
-
-		cmd = Command(bin)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if IsInsideDocker() {
+		// If run through docker, this part is required,
+		// otherwise we should NOT try this because it always gives error:
+		cmd := Command("/bin/sh", "-c", bin)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // set parent group id in order to be kill-able.
 		cmd.Dir = dir
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
-		if err = cmd.Start(); err != nil {
-			return nil, err
+		_, err := pty.Start(cmd)
+		// fork/exec /bin/sh: operation not permitted, even without setpgid.
+
+		if err != nil {
+			if !strings.Contains(err.Error(), "operation not permitted") {
+				return nil, err
+			}
 		}
 	}
 
-	return cmd, err
+	cmd := Command(path.Join(dir, bin))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Dir = dir
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return cmd, nil
 }

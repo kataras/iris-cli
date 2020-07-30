@@ -44,7 +44,7 @@ func KillCommand(cmd *exec.Cmd) error {
 }
 
 func FormatExecutable(bin string) string {
-	if ext := ".exe"; !strings.HasPrefix(bin, ext) {
+	if ext := ".exe"; !strings.HasSuffix(bin, ext) {
 		bin += ext
 	}
 
