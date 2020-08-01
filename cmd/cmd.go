@@ -1,12 +1,19 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
+
+	"github.com/kataras/iris-cli/utils"
 
 	"github.com/spf13/cobra"
 )
+
+var proxyAddr string
 
 // New returns the root command.
 func New(buildRevision, buildTime string) *cobra.Command {
@@ -20,7 +27,28 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 		SilenceUsage:               true,
 		TraverseChildren:           true,
 		SuggestionsMinimumDistance: 1,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run:                        func(cmd *cobra.Command, args []string) {},
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			transport := &http.Transport{
+				DisableCompression: true,
+				DisableKeepAlives:  true,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: utils.IsInsideDocker(),
+				},
+			}
+
+			if proxyAddr != "" {
+				if proxyAddr == "env" {
+					transport.Proxy = http.ProxyFromEnvironment
+				} else {
+					u := &url.URL{Scheme: "http", Host: proxyAddr}
+					transport.Proxy = func(req *http.Request) (*url.URL, error) {
+						return u, nil
+					}
+				}
+			}
+
+			utils.DefaultClient.Transport = transport
 		},
 	}
 
@@ -30,6 +58,7 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 		ShowGoRuntimeVersion: true,
 	}
 	rootCmd.SetHelpTemplate(helpTemplate.String())
+	rootCmd.PersistentFlags().StringVar(&proxyAddr, "proxy", proxyAddr, "--proxy=env to load from system or ip:port form, e.g. 51.158.178.4:3128")
 
 	// Commands.
 	rootCmd.AddCommand(initCommand())

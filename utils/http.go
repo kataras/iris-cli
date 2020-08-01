@@ -2,7 +2,6 @@ package utils
 
 import (
 	"compress/gzip"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,13 +25,8 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 	return ioutil.ReadAll(r)
 }
 
-var httpClient = &http.Client{
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: IsInsideDocker(),
-		},
-	},
-}
+// DefaultClient is the default client all http requests are fired from.
+var DefaultClient = http.DefaultClient
 
 // DownloadReader returns a response reader.
 func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.ReadCloser, error) {
@@ -48,7 +42,7 @@ func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.R
 		}
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
