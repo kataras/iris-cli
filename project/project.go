@@ -74,7 +74,7 @@ type Watcher struct {
 	Backend []string `json:"backend" yaml:"Backend" toml:"backend"`
 	// Frontend file extensions.
 	Frontend []string `json:"frontend" yaml:"Frontend" toml:"frontend"`
-	// IgnoreDirs directories prefix to ignore.
+	// IgnoreDirs directories pattern or literal root dir to ignore.
 	IgnoreDirs []string `json:"ignore_dirs" yaml:"IgnoreDirs" toml:"IgnoreDirs"`
 }
 
@@ -110,14 +110,14 @@ func (p *Project) setDefaults() {
 		}
 	}
 
-	if len(p.BuildFiles) > 0 && len(p.Watcher.IgnoreDirs) == 0 {
-		var ignoreDirs []string
+	if len(p.Watcher.IgnoreDirs) == 0 {
+		p.Watcher.IgnoreDirs = []string{".github", ".github/*", "uploads", "uploads/*"}
+
 		for _, buildFile := range p.BuildFiles {
 			if utils.IsDir(buildFile) {
-				ignoreDirs = append(ignoreDirs, buildFile)
+				p.Watcher.IgnoreDirs = append(p.Watcher.IgnoreDirs, buildFile)
 			}
 		}
-		p.Watcher.IgnoreDirs = append(ignoreDirs, ".github")
 	}
 
 	p.frontEndRunningCommands = make(map[*exec.Cmd]context.CancelFunc) // make(chan context.CancelFunc, 20)
@@ -715,7 +715,9 @@ func (p *Project) watch() error {
 		}
 
 		for _, ignoreDir := range p.Watcher.IgnoreDirs {
-			if strings.HasPrefix(dir, ignoreDir) {
+			if dir == ignoreDir {
+				return false
+			} else if matched, _ := path.Match(ignoreDir, dir); matched {
 				return false
 			}
 		}
