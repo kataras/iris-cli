@@ -13,7 +13,23 @@ Iris Command Line Interface is your buddy when it comes to get started with [Iri
 The only requirement is the [Go Programming Language](https://golang.org/dl).
 
 ```sh
-go get github.com/kataras/iris-cli
+$ go get github.com/kataras/iris-cli
+```
+
+## Troubleshooting
+
+If you get a network error during installation please make sure you set a valid [GOPROXY](https://github.com/golang/go/wiki/Modules#are-there-always-on-module-repositories-and-enterprise-proxies) environment variable.
+
+```sh
+$ go env -w GOPROXY=https://goproxy.cn,https://gocenter.io,https://goproxy.io,direct
+```
+
+If you get a network error during `iris-cli` execution, retry with the `--proxy` global flag.
+
+```sh
+$ iris-cli --proxy=env [COMMAND] [FLAGS]
+# OR
+# iris-cli --proxy=119.28.233.135:8080 [COMMAND] [FLAGS]
 ```
 
 [List all Releases](https://github.com/kataras/iris-cli/releases)
