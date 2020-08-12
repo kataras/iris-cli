@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// iris-cli --time-format=http -v run basic
 func runCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "run",

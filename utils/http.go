@@ -2,12 +2,16 @@ package utils
 
 import (
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/kataras/golog"
 )
 
 // DownloadOption is the type of third, variadic input argument of the `Download` package-level function.
@@ -27,6 +31,39 @@ func Download(url string, body io.Reader, options ...DownloadOption) ([]byte, er
 
 // DefaultClient is the default client all http requests are fired from.
 var DefaultClient = http.DefaultClient
+
+// InitClient initialize the global HTTP client.
+func InitClient(proxyAddr string) {
+	t := &http.Transport{
+		DisableCompression: true,
+		DisableKeepAlives:  true,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: IsInsideDocker(),
+		},
+	}
+
+	if proxyAddr != "" {
+		if proxyAddr == "env" {
+			t.Proxy = http.ProxyFromEnvironment
+		} else {
+			u := &url.URL{Scheme: "http", Host: proxyAddr}
+			t.Proxy = func(req *http.Request) (*url.URL, error) {
+				golog.Debugf("HTTP: fetching using proxy <%s>", proxyAddr)
+				return u, nil
+			}
+		}
+	}
+
+	DefaultClient.Transport = &transportWrapper{t}
+}
+
+type transportWrapper struct{ *http.Transport }
+
+// RoundTrip implements the http.RoundTripper interface.
+func (t *transportWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	golog.Debugf("HTTP: fetching <%s: %s>", req.Method, req.URL.String())
+	return t.Transport.RoundTrip(req)
+}
 
 // DownloadReader returns a response reader.
 func DownloadReader(url string, body io.Reader, options ...DownloadOption) (io.ReadCloser, error) {

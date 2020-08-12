@@ -1,22 +1,25 @@
 package cmd
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 
+	"github.com/kataras/golog"
 	"github.com/kataras/iris-cli/utils"
 
 	"github.com/spf13/cobra"
 )
 
-var proxyAddr string
-
 // New returns the root command.
 func New(buildRevision, buildTime string) *cobra.Command {
+	var (
+		proxyAddr   string
+		verboseMode bool
+		timeFormat  string
+	)
+
 	rootCmd := &cobra.Command{
 		Use:   "iris-cli",
 		Short: "Command Line Interface for Iris",
@@ -29,26 +32,17 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 		SuggestionsMinimumDistance: 1,
 		Run:                        func(cmd *cobra.Command, args []string) {},
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			transport := &http.Transport{
-				DisableCompression: true,
-				DisableKeepAlives:  true,
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: utils.IsInsideDocker(),
-				},
+			if timeFormat == "http" {
+				timeFormat = http.TimeFormat
 			}
 
-			if proxyAddr != "" {
-				if proxyAddr == "env" {
-					transport.Proxy = http.ProxyFromEnvironment
-				} else {
-					u := &url.URL{Scheme: "http", Host: proxyAddr}
-					transport.Proxy = func(req *http.Request) (*url.URL, error) {
-						return u, nil
-					}
-				}
+			golog.SetTimeFormat(timeFormat)
+
+			if verboseMode {
+				golog.SetLevel("debug")
 			}
 
-			utils.DefaultClient.Transport = transport
+			utils.InitClient(proxyAddr)
 		},
 	}
 
@@ -58,7 +52,12 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 		ShowGoRuntimeVersion: true,
 	}
 	rootCmd.SetHelpTemplate(helpTemplate.String())
+
+	// Shared flags.
+	rootCmd.PersistentFlags().BoolVarP(&verboseMode, "verbose", "v", verboseMode, "-v to enable verbose messages")
 	rootCmd.PersistentFlags().StringVar(&proxyAddr, "proxy", proxyAddr, "--proxy=env to load from system or ip:port form, e.g. 51.158.178.4:3128")
+	rootCmd.PersistentFlags().StringVar(&timeFormat, "time-format", timeFormat,
+		`--time-format="Mon, 02 Jan 2006 15:04:05 GMT" or "http" to customize the log time format, defaults to empty, no time info`)
 
 	// Commands.
 	rootCmd.AddCommand(initCommand())
@@ -68,6 +67,7 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 	rootCmd.AddCommand(unistallCommand())
 	rootCmd.AddCommand(addCommand())
 	rootCmd.AddCommand(checkCommand())
+	rootCmd.AddCommand(statsCommand())
 
 	return rootCmd
 }
