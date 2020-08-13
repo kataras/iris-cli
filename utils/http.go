@@ -138,3 +138,14 @@ func DownloadFile(repo, version, name string) ([]byte, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, version, name)
 	return Download(url, nil)
 }
+
+// ReadJSON decodes a resource to "ptr".
+func ReadJSON(url string, ptr interface{}) error {
+	r, err := DownloadReader(url, nil)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	return json.NewDecoder(r).Decode(ptr)
+}

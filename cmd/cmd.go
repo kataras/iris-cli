@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/kataras/golog"
 	"github.com/kataras/iris-cli/utils"
 
+	"github.com/kataras/golog"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +35,6 @@ Complete documentation is available at https://github.com/kataras/iris-cli`,
 			if timeFormat == "http" {
 				timeFormat = http.TimeFormat
 			}
-
 			golog.SetTimeFormat(timeFormat)
 
 			if verboseMode {

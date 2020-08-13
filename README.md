@@ -28,8 +28,7 @@ If you get a network error during `iris-cli` execution, retry with the `--proxy`
 
 ```sh
 $ iris-cli --proxy=env [COMMAND] [FLAGS]
-# OR
-# iris-cli --proxy=119.28.233.135:8080 [COMMAND] [FLAGS]
+#          --proxy=119.28.233.135:8080
 ```
 
 [List all Releases](https://github.com/kataras/iris-cli/releases)
@@ -46,18 +45,19 @@ $ iris-cli --proxy=env [COMMAND] [FLAGS]
     * [add](#add-command)
 * Miscellaneous
     * [check](#check-command)
+    * [stats](#stats-command)
 
 ### New Command
 
 ```sh
-iris-cli new [--module=my_app] react-typescript
+$ iris-cli new [--module=my_app] react-typescript
 #                              svelte
 ```
 
 ### Run Command
 
 ```sh
-iris-cli run
+$ iris-cli run
 # optional argument, the project directory or
 # a project template.
 ```
@@ -65,13 +65,13 @@ iris-cli run
 [Download, install](#new-command) and run a [project template](registry.yml) at once.
 
 ```sh
-iris-cli run react-typescript
+$ iris-cli run react-typescript
 ```
 
 ### Clean Command
 
 ```sh
-iris-cli clean
+$ iris-cli clean
 # optional argument, the project directory,
 # defaults to the current working directory.
 ```
@@ -79,7 +79,7 @@ iris-cli clean
 ### Unistall Command
 
 ```sh
-iris-cli unistall
+$ iris-cli unistall
 # optional argument, the project directory,
 # defaults to the current working directory.
 ```
@@ -89,26 +89,96 @@ iris-cli unistall
 Create a new local iris project file through a local git repository.
 
 ```sh
-iris-cli init
+$ iris-cli init
 ```
 
 ### Add Command
 
 ```sh
-iris-cli add file.go
+$ iris-cli add file.go
 ```
 
 ```sh
-iris-cli add [--repo=iris-contrib/snippets] [--pkg=my_package] [--data=repo.json] [--replace=oldValue=newValue,oldValue2=newValue2] file.go[@version]
+$ iris-cli add [--repo=iris-contrib/snippets] [--pkg=my_package] [--data=repo.json] [--replace=oldValue=newValue,oldValue2=newValue2] file.go[@version]
 ```
 
 ### Check Command
 
 ```sh
-iris-cli check [module]  
+$ iris-cli check [module]  
 #              [iris]
 #              [gopkg.in/yaml.v2]
 #              [all]
+```
+
+### Stats Command
+
+Stats command shows stats for a collection of modules based on the
+major Go Proxies (goproxy.cn, gocenter.io, goproxy.io). Modules are separated by spaces.
+
+#### Get Download Count
+
+Download count per GOPROXY for a module and total for repository.
+
+```sh
+$ iris-cli stats --download-count [modules]
+#              github.com/kataras/iris github.com/kataras/iris/v12
+#              gopkg.in/yaml.v3 gopkg.in/yaml.v2
+
+[github.com/kataras/iris]
+• goproxy.cn: 27474
+• gocenter.io: 5560
+• total: 33034
+[github.com/kataras/iris/v12]
+• goproxy.cn: 33589
+• gocenter.io: 3024
+• total: 36613
+[gopkg.in/yaml.v2]
+• goproxy.cn: 2306257
+• gocenter.io: 1686035
+• total: 3992292
+[gopkg.in/yaml.v3]
+• goproxy.cn: 241121
+• gocenter.io: 37909
+• total: 279030
+
+[repository total]
+• github.com/kataras/iris: 69647
+• gopkg.in/yaml: 4271322
+```
+
+### List Versions
+
+List all available releases Go Proxies have cached.
+
+```sh
+$ iris-cli stats --versions github.com/aws/copilot-cli gopkg.in/yaml.v2
+
+[github.com/aws/copilot-cli]
+• goproxy.io:
+  • v0.0.4
+  • v0.0.5
+  • v0.0.6
+  • v0.0.7
+  • v0.0.8
+  • v0.0.9
+  • v0.1.0
+  • v0.2.0
+[gopkg.in/yaml.v2]
+• goproxy.io:
+  • v2.0.0
+  • v2.1.0
+  • v2.1.1
+  • v2.2.0
+  • v2.2.1
+  • v2.2.2
+  • v2.2.3
+  • v2.2.4
+  • v2.2.5
+  • v2.2.6
+  • v2.2.7
+  • v2.2.8
+  • v2.3.0
 ```
 
 ### Contributing
