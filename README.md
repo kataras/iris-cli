@@ -122,6 +122,7 @@ Download count per GOPROXY for a module and total for repository.
 
 ```sh
 $ iris-cli stats --download-count [modules]
+#              --download-count --versions [modules]
 #              github.com/kataras/iris github.com/kataras/iris/v12
 #              gopkg.in/yaml.v3 gopkg.in/yaml.v2
 
@@ -146,6 +147,41 @@ $ iris-cli stats --download-count [modules]
 • github.com/kataras/iris: 69647
 • gopkg.in/yaml: 4271322
 ```
+
+### Export & Compare Download Count Stats
+
+To export the result of `stats --download-count` command you have to use the `--out=downloads.yml` flag.
+
+```sh
+$ iris-cli stats --download-count --out=downloads.yml \
+  gopkg.in/yaml.v2 gopkg.in/yaml.v3 \
+  github.com/kataras/iris github.com/kataras/irisv12
+```
+
+The above command will export the stats data to the `downloads.yml` file. When it contains data, the stats will be appended, so you have a **history of stats**. Run that command multiple times, e.g. wait 1minute, then wait 30 seconds and e.t.c. so we can have a sample data for the example.
+
+Now, with that history, we can view the total downloads per repository with the `stats compare --download-count` command.
+
+```sh
+$ stats compare --download-count --since=24h --src=downloads.yml
+          
+[27 minutes ago]
+  • github.com/kataras/iris: 70320
+  • gopkg.in/yaml: 4295883
+[22 minutes ago]
+  • github.com/kataras/iris: 70327
+  • gopkg.in/yaml: 4295886
+
+[diff]
+  • github.com/kataras/iris: +7
+  • gopkg.in/yaml: +3
+```
+
+That will fetch the history and show the stats of the last 24 hours sorted by ascending timestamp of history entry. And shows how many new downloads each module has since the first entry(oldest) and the last one(newest).
+
+The `--src` flag is required. You can disable the humanize time of the above by setting the `--pretty=false` flag. Customize its time format through the `--time-format` flag.
+
+> Note that the history file should be always generated through the `iris-cli` tool for consistent results.
 
 ### List Versions
 

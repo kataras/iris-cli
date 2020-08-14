@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -369,4 +372,65 @@ func NewWatcher() (*Watcher, error) {
 
 	go w.start()
 	return w, nil
+}
+
+// Export exports "v" to "destFile" system file.
+// It creates it if it does not exist and overrides it if contains data.
+func Export(destFile string, v interface{}) error {
+	destFile = filepath.ToSlash(destFile)
+	if dir := path.Dir(destFile); len(dir) > 1 {
+		os.MkdirAll(dir, 0666)
+	}
+
+	f, err := os.OpenFile(destFile, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+
+	var encoder interface {
+		Encode(interface{}) error
+	}
+
+	switch ext := path.Ext(destFile); ext {
+	case ".json":
+		encoder = json.NewEncoder(f)
+	case ".yml", ".yaml":
+		enc := yaml.NewEncoder(f)
+		defer enc.Close()
+		encoder = enc
+	default:
+		return fmt.Errorf("unexpected file extension: %s", ext)
+	}
+
+	return encoder.Encode(v)
+}
+
+// Import decodes a file to "dest".
+func Import(sourceFile string, dest interface{}) error {
+	f, err := os.Open(sourceFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if st, err := f.Stat(); err != nil {
+		return err
+	} else if length := st.Size(); length == 0 {
+		return nil // it may exists but empty.
+	}
+
+	var decoder interface {
+		Decode(interface{}) error
+	}
+
+	switch ext := path.Ext(filepath.ToSlash(sourceFile)); ext {
+	case ".json":
+		decoder = json.NewDecoder(f)
+	case ".yml", ".yaml":
+		decoder = yaml.NewDecoder(f)
+	default:
+		return fmt.Errorf("unexpected file extension: %s", ext)
+	}
+
+	return decoder.Decode(dest)
 }

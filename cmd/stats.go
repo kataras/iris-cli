@@ -3,21 +3,27 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kataras/iris-cli/utils"
 
+	"github.com/kataras/golog"
 	"github.com/spf13/cobra"
 )
 
 // stats --download-count [modules]
 //       --versions [modules]
+//
+// go run -race main.go stats -v --download-count --out=downloads.yml gopkg.in/yaml.v2 gopkg.in/yaml.v3 github.com/kataras/iris github.com/kataras/iris/v12
 func statsCommand() *cobra.Command {
 	var (
 		showDownloadCount bool
 		listVersions      bool
+		out               string
 	)
 
 	cmd := &cobra.Command{
@@ -30,71 +36,64 @@ func statsCommand() *cobra.Command {
 				modules = args
 			}
 
-			sort.Strings(modules)
 			// TODO: JSON format?
 
 			if showDownloadCount {
-				return executeShowDownloadCount(cmd, modules)
+				if err := executeShowDownloadCount(cmd, modules, out); err != nil {
+					return err
+				}
 			}
 			if listVersions {
-				return executeListVersions(cmd, modules)
+				if err := executeListVersions(cmd, modules, showDownloadCount); err != nil {
+					return err
+				}
 			}
 
 			return nil
 		},
 	}
 
+	cmd.Flags().StringVar(&out, "out", out, "--out=downloads.yml to export total download counts")
 	cmd.Flags().BoolVar(&showDownloadCount, "download-count", showDownloadCount, "--download-count to fetch download count")
 	cmd.Flags().BoolVar(&listVersions, "versions", listVersions, "--versions to list versions")
+
+	cmd.AddCommand(statsCompareCommand())
 
 	return cmd
 }
 
-func executeShowDownloadCount(cmd *cobra.Command, modules []string) error {
-	totalModuleDownloads := make(map[string]int)
-	baseModule := ""
-	for _, module := range modules {
+func executeShowDownloadCount(cmd *cobra.Command, modules []string, output string) error {
+	st, err := calculateDownloadCount(modules)
+	if err != nil {
+		return err
+	}
 
-		// if len(totalModuleDownloads) > 0 { to leave a new line after base end.
-		// 	if _, ok := totalModuleDownloads[baseModule]; !ok {
-		// 		cmd.Println()
-		// 	}
-		// }
+	for _, downloadCount := range st.DownloadCounts {
+		cmd.Printf("[%s]\n", downloadCount.Module)
 
-		cmd.Printf("[%s]\n", module)
-		total := 0
-		for _, service := range goProxies {
-			serviceName := service.name()
-			count, err := service.getDownloadCount(module)
-			if err != nil {
-				if err == errNotImplemented {
-					// cmd.Printf("[%s] service is missing a download count API\n", serviceName)
-					// Let's just skip it.
-					continue
-				}
-				return err
-			}
-			total += count
+		for serviceName, count := range downloadCount.DownloadCount {
 			cmd.Printf("• %s: %d\n", serviceName, count)
 		}
 
-		if total > 0 {
+		if total := downloadCount.TotalDownloadCount; total > 0 {
 			cmd.Printf("• total: %d\n", total)
 		}
-
-		baseModule = baseModulePath(module)
-		totalModuleDownloads[baseModule] += total
 	}
 
-	if len(totalModuleDownloads) > 0 {
+	if len(st.TotalDownloadCounts) > 0 {
 		cmd.Println()
 		cmd.Println("[repository total]")
-		for _, module := range modules {
-			for baseModule, total := range totalModuleDownloads {
-				if baseModulePath(module) == baseModule {
-					cmd.Printf("• %s: %d\n", baseModule, total)
-					delete(totalModuleDownloads, baseModule)
-				}
+
+		for _, downloadCount := range st.TotalDownloadCounts {
+			if total := downloadCount.TotalDownloadCount; total > 0 {
+				cmd.Printf("• %s: %d\n", downloadCount.Module, downloadCount.TotalDownloadCount)
+			}
+		}
+
+		if output != "" {
+			err := exportStats([]stats{st}, output)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -102,7 +101,177 @@ func executeShowDownloadCount(cmd *cobra.Command, modules []string) error {
 	return nil
 }
 
-func executeListVersions(cmd *cobra.Command, modules []string) error {
+type stats struct {
+	Timestamp           int64                 `json:"timestamp" yaml:"Timestamp"`
+	TotalDownloadCounts []*downloadCountStats `json:"total_download_counts" yaml:"TotalDownloadCounts"` // base module's total download count.
+	DownloadCounts      []*downloadCountStats `json:"-" yaml:"-"`
+}
+
+type downloadCountStats struct {
+	Module             string           `json:"module" yaml:"Module"`
+	DownloadCount      map[string]int64 `json:"-" yaml:"-"` // service name download count.
+	TotalDownloadCount int64            `json:"download_count" yaml:"DownloadCount"`
+}
+
+func calculateDownloadCount(modules []string) (stats, error) { // TODO: prettify it, it works and it has no race conditions but it should be clean.
+	st := stats{
+		Timestamp: time.Now().Unix(),
+	}
+
+	totalDownloadStats := make(map[string]*downloadCountStats)
+	mu := new(sync.RWMutex)
+
+	calc := func(module string) error {
+		var total int64
+
+		baseModule := baseModulePath(module)
+
+		dlStats := &downloadCountStats{
+			Module:        module,
+			DownloadCount: make(map[string]int64),
+		}
+
+		calcProxy := func(service goProxy) error {
+			serviceName := service.name()
+			count, err := service.getDownloadCount(module)
+			if err != nil {
+				if err == errNotImplemented {
+					// cmd.Printf("[%s] service is missing a download count API\n", serviceName)
+					// Let's just skip it.
+					return nil
+				}
+				return err
+			}
+
+			if count == 0 {
+				return nil
+			}
+
+			mu.Lock()
+			dlStats.DownloadCount[serviceName] = count
+			dlStats.TotalDownloadCount += count
+			total += count
+			mu.Unlock()
+
+			return nil
+		}
+
+		mu.RLock()
+		dlTotalStats, hasPrevBaseModule := totalDownloadStats[baseModule]
+		mu.RUnlock()
+		if dlTotalStats == nil {
+			dlTotalStats = &downloadCountStats{
+				Module:        baseModule,
+				DownloadCount: make(map[string]int64),
+			}
+			mu.Lock()
+			totalDownloadStats[baseModule] = dlTotalStats
+			mu.Unlock()
+		}
+
+		wgProxies := new(sync.WaitGroup)
+		wgProxies.Add(len(goProxies))
+		var err error
+		errLock := new(sync.Mutex)
+
+		for _, service := range goProxies {
+			go func(service goProxy) {
+				defer wgProxies.Done()
+
+				calcErr := calcProxy(service)
+				if calcErr != nil {
+					errLock.Lock()
+					if err == nil {
+						err = errors.New("")
+					} else {
+						err = fmt.Errorf("%v, %v", err, calcErr)
+					}
+					errLock.Unlock()
+				}
+			}(service)
+		}
+
+		wgProxies.Wait()
+
+		mu.Lock()
+		st.DownloadCounts = append(st.DownloadCounts, dlStats)
+		mu.Unlock()
+
+		if total > 0 {
+			mu.Lock()
+			dlTotalStats.TotalDownloadCount += total
+			mu.Unlock()
+			if !hasPrevBaseModule {
+				mu.Lock()
+				st.TotalDownloadCounts = append(st.TotalDownloadCounts, dlTotalStats)
+				mu.Unlock()
+			}
+		}
+
+		return err
+	}
+
+	var err error
+	errLock := new(sync.Mutex)
+	wg := new(sync.WaitGroup)
+	wg.Add(len(modules))
+	start := time.Now()
+	for _, module := range modules {
+		go func(module string) { // we try to collect all errors, we do not abort on first error.
+			defer wg.Done()
+			calcErr := calc(module)
+			if calcErr != nil {
+				errLock.Lock()
+				if err == nil {
+					err = errors.New("")
+				} else {
+					err = fmt.Errorf("%v, %v", err, calcErr)
+				}
+				errLock.Unlock()
+			}
+		}(module)
+	}
+
+	wg.Wait()
+	golog.Debugf("Time elapsed to calculate download stats: %s", time.Since(start))
+
+	st.DownloadCounts = sortDownloadCountStats(st.DownloadCounts)
+	st.TotalDownloadCounts = sortDownloadCountStats(st.TotalDownloadCounts)
+	return st, err
+}
+
+func sortDownloadCountStats(dlStats []*downloadCountStats) []*downloadCountStats {
+	sort.Slice(dlStats, func(i, j int) bool {
+		return dlStats[i].Module < dlStats[j].Module
+	})
+
+	return dlStats
+}
+
+func exportStats(st []stats, inout string) error {
+	var temp []stats
+	if err := utils.Import(inout, &temp); err != nil {
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, os.ErrPermission) { // else we don't care, we will create it.
+			return err
+		}
+	}
+
+	st = append(temp, st...)
+
+	// for _, stat := range st {
+	// 	stat.DownloadCounts = sortDownloadCountStats(stat.DownloadCounts)
+	// 	stat.TotalDownloadCounts = sortDownloadCountStats(stat.TotalDownloadCounts)
+	// }
+
+	return utils.Export(inout, st)
+}
+
+func executeListVersions(cmd *cobra.Command, modules []string, prependNewLine bool) error {
+	if prependNewLine {
+		cmd.Println()
+	}
+	sort.Strings(modules)
+
 	for _, module := range modules {
 		cmd.Printf("[%s]\n", module)
 		for _, service := range goProxies {
@@ -159,7 +328,7 @@ var goProxies = []goProxy{ // order.
 type goProxy interface {
 	name() string
 	// Example: https://goproxy.cn/stats/github.com/kataras/iris/v12
-	getDownloadCount(module string) (int, error)
+	getDownloadCount(module string) (int64, error)
 
 	// Example:
 	// https://goproxy.io/github.com/kataras/iris/@v/list
@@ -175,7 +344,7 @@ type (
 	}
 
 	versionInfo struct {
-		downloadCount int
+		downloadCount int64
 	}
 )
 
@@ -195,17 +364,17 @@ func (p *goProxyCN) url(format string, args ...interface{}) string {
 	return fmt.Sprintf("https://goproxy.cn%s", fmt.Sprintf(format, args...))
 }
 
-func (p *goProxyCN) getDownloadCount(module string) (int, error) {
+func (p *goProxyCN) getDownloadCount(module string) (int64, error) {
 	url := p.url("/stats/%s", module)
 
 	var stats = struct {
-		DownloadCount int `json:"download_count"`
+		DownloadCount int64 `json:"download_count"`
 		Last30Days    []struct {
 			Date          time.Time `json:"date"`
-			DownloadCount int       `json:"download_count"`
+			DownloadCount int64     `json:"download_count"`
 		} `json:"last_30_days"`
 		Top10ModuleVersions []struct {
-			DownloadCount int    `json:"download_count"`
+			DownloadCount int64  `json:"download_count"`
 			ModuleVersion string `json:"module_version"`
 		} `json:"top_10_module_versions"`
 	}{}
@@ -233,16 +402,15 @@ func (p *goCenterIO) name() string {
 	return "gocenter.io"
 }
 
-func (p *goCenterIO) getDownloadCount(module string) (int, error) {
-	base := baseModulePath(module)
-	url := fmt.Sprintf("https://search.gocenter.io/api/ui/search?name_fragment=%s", base)
+func (p *goCenterIO) getDownloadCount(module string) (int64, error) {
+	url := fmt.Sprintf("https://search.gocenter.io/api/ui/search?name_fragment=%s", module)
 
 	var stats = struct {
 		Count   int `json:"count"`
 		Modules []struct {
 			Name          string `json:"name"`
 			Description   string `json:"description"`
-			Downloads     int    `json:"downloads"`
+			Downloads     int64  `json:"downloads"`
 			Stars         int    `json:"stars"`
 			LatestVersion string `json:"latest_version"`
 		} `json:"modules"`
@@ -277,7 +445,7 @@ func (p *goProxyIO) name() string {
 	return "goproxy.io"
 }
 
-func (p *goProxyIO) getDownloadCount(module string) (int, error) {
+func (p *goProxyIO) getDownloadCount(module string) (int64, error) {
 	return 0, errNotImplemented
 }
 

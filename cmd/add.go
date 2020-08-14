@@ -66,7 +66,7 @@ func addCommand() *cobra.Command {
 						Validate: nil,
 						Transform: func(ans interface{}) (newAns interface{}) {
 							if path, ok := ans.(string); ok {
-								readDataFile(cmd, path, &file.Data) // can't set as &newAns because survey use that as string without checks on its input.go#101.
+								utils.Import(path, &file.Data) // can't set as &newAns because survey use that as string without checks on its input.go#101.
 							}
 							return
 						},
@@ -94,7 +94,7 @@ func addCommand() *cobra.Command {
 				file.Name, file.Version = utils.SplitNameVersion(args[0])
 
 				if tmplDataFile != "" {
-					readDataFile(cmd, tmplDataFile, &file.Data)
+					utils.Import(tmplDataFile, &file.Data)
 				}
 			}
 

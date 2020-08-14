@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"net/http"
-	"os"
 
 	"github.com/kataras/iris-cli/utils"
 
@@ -12,12 +9,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var timeFormat string
+
 // New returns the root command.
 func New(buildRevision, buildTime string) *cobra.Command {
 	var (
 		proxyAddr   string
 		verboseMode bool
-		timeFormat  string
 	)
 
 	rootCmd := &cobra.Command{
@@ -124,19 +122,4 @@ func RunCommand(from *cobra.Command, commandToRun string, args ...string) error 
 	}
 
 	return nil
-}
-
-func readDataFile(cmd *cobra.Command, path string, ptr interface{}) {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		cmd.PrintErrln(err)
-		os.Exit(1)
-		return
-	}
-
-	err = json.Unmarshal(b, &ptr)
-	if err != nil {
-		cmd.PrintErrln(err)
-		os.Exit(1)
-	}
 }
