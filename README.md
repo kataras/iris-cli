@@ -95,6 +95,8 @@ Create a new local iris project file through a local git repository.
 $ iris-cli init
 ```
 
+It creates the `.iris.yml` file for you. Note that, it adds a _.gitignore_ entry of `.iris.yml` too. Therefore **.iris.yml** SHOULD be git-ignored as its settings depend on the current environment. Contributors of an iris-cli project should use their own versions of `.iris.yml` file.
+
 ### Add Command
 
 ```sh
