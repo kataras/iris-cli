@@ -50,8 +50,11 @@ $ iris-cli --proxy=env [COMMAND] [FLAGS]
 ### New Command
 
 ```sh
-$ iris-cli new [--module=my_app] react-typescript
-#                              svelte
+$ iris-cli new [--module=my_app] basic
+#                                mvc
+#                                svelte
+#                                react-typescript
+#                                go-admin
 ```
 
 ### Run Command
@@ -122,9 +125,8 @@ Download count per GOPROXY for a module and total for repository.
 
 ```sh
 $ iris-cli stats --download-count [modules]
-#              --download-count --versions [modules]
-#              github.com/kataras/iris github.com/kataras/iris/v12
-#              gopkg.in/yaml.v3 gopkg.in/yaml.v2
+#  github.com/kataras/iris github.com/kataras/iris/v12 \
+#  gopkg.in/yaml.v3 gopkg.in/yaml.v2
 
 [github.com/kataras/iris]
 • goproxy.cn: 27474
@@ -177,7 +179,7 @@ $ stats compare --download-count --since=24h --src=downloads.yml
   • gopkg.in/yaml: +3
 ```
 
-That will fetch the history and show the stats of the last 24 hours sorted by ascending timestamp of history entry. And shows how many new downloads each module has since the first entry(oldest) and the last one(newest).
+That will fetch the history and show the stats of the last 24 hours sorted by ascending timestamp of history entry. And shows how many new downloads each repository (base of one or more modules) has since the first entry(oldest) and the last one(newest).
 
 The `--src` flag is required. You can disable the humanize time of the above by setting the `--pretty=false` flag. Customize its time format through the `--time-format` flag.
 

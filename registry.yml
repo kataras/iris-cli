@@ -1,6 +1,7 @@
 Projects:
   {
     basic: "iris-contrib/basic-template",
+    mvc: "iris-contrib/mvc-template",
     svelte: "iris-contrib/svelte-template",
     react-typescript: "iris-contrib/react-typescript-template",
     go-admin: "iris-contrib/go-admin-template",

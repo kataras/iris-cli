@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
 	// "go/printer"
 	"go/token"
 	// 	"go/types"
@@ -96,6 +97,10 @@ func Parse(src interface{}) (*Result, error) {
 	return res, nil
 }
 
+// TODO: after Iris version 12.2.x, the AssetXXX functions are removed
+// as the latest release of go-bindata supports generating a http.FileSystem.
+// This works now with the comment before the app.HandleDir of // $ go-bindata -fs args...
+// But make it to work automatically again, without the comment, in the near future.
 func parseFile(node *ast.File, filename string, res *Result) {
 	for _, comment := range node.Comments {
 		commentText := strings.TrimSpace(strings.TrimSuffix(comment.Text(), "\n"))
