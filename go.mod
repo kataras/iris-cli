@@ -10,7 +10,7 @@ require (
 	github.com/denormal/go-gitignore v0.0.0-20180930084346-ae8ad1d07817
 	github.com/dustin/go-humanize v1.0.1-0.20200219035652-afde56e7acac
 	github.com/fsnotify/fsnotify v1.4.9
-	github.com/kataras/golog v0.1.0
+	github.com/kataras/golog v0.1.5
 	github.com/kataras/neffos v0.0.16
 	github.com/spf13/cobra v1.0.0
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208

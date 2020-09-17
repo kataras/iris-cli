@@ -857,7 +857,7 @@ func (p *Project) watch() error {
 					ext = name[idx:]
 				}
 
-				if ext == "" {
+				if ext == "" || ext == ".log" {
 					// skip...
 					continue
 				}
