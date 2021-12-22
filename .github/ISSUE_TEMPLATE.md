@@ -1,5 +1,5 @@
 Examples for the `iris-cli` project can be found at
-<https://github.com/kataras/iris-cli/tree/master/_examples>.
+<https://github.com/kataras/iris-cli/tree/main/_examples>.
 
 Documentation for the `iris-cli` project can be found at
 <https://godoc.org/github.com/kataras/iris-cli>.

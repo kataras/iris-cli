@@ -1,6 +1,6 @@
 # Iris CLI (Work In Progress)
 
-[![build status](https://img.shields.io/github/workflow/status/kataras/iris-cli/CI/master?style=for-the-badge)](https://github.com/kataras/iris-cli/actions) [![report card](https://img.shields.io/badge/report%20card-a%2B-ff3333.svg?style=for-the-badge)](https://goreportcard.com/report/github.com/kataras/iris-cli)
+[![build status](https://img.shields.io/github/workflow/status/kataras/iris-cli/CI/main?style=for-the-badge)](https://github.com/kataras/iris-cli/actions) [![report card](https://img.shields.io/badge/report%20card-a%2B-ff3333.svg?style=for-the-badge)](https://goreportcard.com/report/github.com/kataras/iris-cli)
 
 Iris Command Line Interface is your buddy when it comes to get started with [Iris](https://github.com/kataras/iris) and [Go](https://golang.org/dl).
 
@@ -13,7 +13,7 @@ Iris Command Line Interface is your buddy when it comes to get started with [Iri
 The only requirement is the [Go Programming Language](https://golang.org/dl).
 
 ```sh
-$ go get github.com/kataras/iris-cli
+$ go install github.com/kataras/iris-cli@main
 ```
 
 ## Troubleshooting

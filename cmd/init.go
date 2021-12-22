@@ -137,7 +137,7 @@ func fromLocalGitRepository(projectPath string) (string, string, string, error) 
 		}
 	}
 
-	// Find version, if any (otherwise it defaults to master)
+	// Find version, if any (otherwise it defaults to master/main)
 	version, err := getLatestTagFromRepository(r)
 	if version == "" {
 		version, err = getCurrentBranchFromRepository(r)

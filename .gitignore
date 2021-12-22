@@ -1,3 +1,5 @@
 .vscode
 bin/
 _testfiles/
+.DS_STORE
+iris-cli
