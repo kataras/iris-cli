@@ -29,7 +29,7 @@ type Project struct {
 	Name string `json:"name,omitempty" yaml:"Name" toml:"Name"` // e.g. starter-kit
 	// Remote.
 	Repo    string `json:"repo" yaml:"Repo" toml:"Repo"`                    // e.g. "iris-contrib/starter-kit"
-	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "master"
+	Version string `json:"version,omitempty" yaml:"Version" toml:"Version"` // if empty then set to "main"
 	// Local.
 	Dest         string            `json:"dest,omitempty" yaml:"Dest" toml:"Dest"`       // if empty then $GOPATH+Module or ./+Module, absolute path of project destination.
 	Module       string            `json:"module,omitempty" yaml:"Module" toml:"Module"` // if empty then set to the remote module name fetched from go.mod
@@ -204,7 +204,7 @@ func (p *Project) Install() error {
 func (p *Project) download() ([]byte, error) {
 	p.Version = strings.Split(p.Version, " ")[0]
 	if p.Version == "latest" {
-		p.Version = "master"
+		p.Version = "main"
 	}
 
 	zipURL := fmt.Sprintf("https://github.com/%s/archive/%s.zip", p.Repo, p.Version) // e.g. https://github.com/kataras/iris-cli/archive/master.zip

@@ -132,7 +132,7 @@ func ListReleases(repo string) []string {
 // DownloadFile returns the contents of a github file inside a repository.
 func DownloadFile(repo, version, name string) ([]byte, error) {
 	if version == "" || version == "latest" {
-		version = "master"
+		version = "main"
 	}
 
 	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, version, name)

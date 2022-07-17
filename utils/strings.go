@@ -11,7 +11,7 @@ func SplitNameVersion(s string) (name string, version string) {
 	if len(nameBranch) > 1 {
 		version = nameBranch[1]
 	} else {
-		version = "master"
+		version = "main"
 	}
 
 	return

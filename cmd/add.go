@@ -22,7 +22,7 @@ func addCommand() *cobra.Command {
 	var (
 		file = snippet.File{
 			Repo:    defaultRepo,
-			Version: "master",
+			Version: "main",
 			Dest:    "./",
 			Package: "",
 		}

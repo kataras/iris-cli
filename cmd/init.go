@@ -46,7 +46,7 @@ func initCommand() *cobra.Command {
 
 				name = filepath.Base(projectPath)
 				repo = ""
-				version = "master"
+				version = "main"
 				// err = nil
 			}
 

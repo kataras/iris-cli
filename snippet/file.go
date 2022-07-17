@@ -29,7 +29,7 @@ func ListFiles(repo, version string) ([]*File, error) {
 	}
 
 	if version == "" {
-		version = "master"
+		version = "main"
 	}
 
 	var resp []*File
@@ -107,7 +107,7 @@ func IsMissingKeys(err error) ([]string, bool) {
 // Install downloads and performs necessary tasks to save a remote file.
 func (f *File) Install() error {
 	if f.Version == "" || f.Version == "latest" {
-		f.Version = "master"
+		f.Version = "main"
 	}
 
 	if f.Repo == "" && f.DownloadURL != "" {

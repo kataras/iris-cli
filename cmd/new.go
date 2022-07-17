@@ -20,7 +20,7 @@ func newCommand() *cobra.Command {
 		reg = project.NewRegistry()
 
 		opts = project.Project{
-			Version:            "master",
+			Version:            "main",
 			Dest:               "./",
 			NpmBuildScriptName: project.ActionBuild,
 			Reader: func(r io.Reader) ([]byte, error) {
