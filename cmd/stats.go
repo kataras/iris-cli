@@ -16,7 +16,8 @@ import (
 )
 
 // stats --download-count [modules]
-//       --versions [modules]
+//
+//	--versions [modules]
 //
 // go run -race main.go stats -v --download-count --out=downloads.yml gopkg.in/yaml.v2 gopkg.in/yaml.v3 github.com/kataras/iris github.com/kataras/iris/v12
 func statsCommand() *cobra.Command {

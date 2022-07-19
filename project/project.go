@@ -972,7 +972,7 @@ func getActionCommand(path string, action string) *exec.Cmd {
 }
 
 var thirdPartyBinaries = map[string]string{ // key = %GOPATH%/bin/$binary value = repository to fetch if not exists.
-	"go-bindata": "github.com/go-bindata/go-bindata/...",
+	"go-bindata": "github.com/go-bindata/go-bindata/v3/go-bindata@latest",
 }
 
 func runCmd(cmd *exec.Cmd, dir string) error {
@@ -981,10 +981,10 @@ func runCmd(cmd *exec.Cmd, dir string) error {
 	}
 
 	name := cmd.Args[0]
-	if repo, ok := thirdPartyBinaries[name]; ok {
+	if binModule, ok := thirdPartyBinaries[name]; ok {
 		if _, err := exec.LookPath(name); err != nil {
 			// try go-get it.
-			if err = runCmd(utils.Command("go", "get", "-u", "-f", repo), cmd.Dir); err != nil {
+			if err = runCmd(utils.Command("go", "install", binModule), cmd.Dir); err != nil {
 				return err
 			}
 
