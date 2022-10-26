@@ -11,7 +11,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/kataras/golog v0.1.7
 	github.com/kataras/neffos v0.0.20
-	github.com/spf13/cobra v1.6.0
+	github.com/spf13/cobra v1.6.1
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v3 v3.0.1
