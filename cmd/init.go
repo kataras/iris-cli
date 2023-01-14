@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -86,6 +87,9 @@ func initCommand() *cobra.Command {
 			// Get go module path.
 			module := findModulePath(projectPath)
 
+			// Get the installed node package manager.
+			npmBin := findNpm()
+
 			p := &project.Project{
 				Name:               name,
 				Repo:               repo,
@@ -94,6 +98,7 @@ func initCommand() *cobra.Command {
 				Module:             module,
 				Files:              files, // if git repository then on unistall command the .git directory remains, if community wants to remove that too then will do.
 				NpmBuildScriptName: project.ActionBuild,
+				NodePackageManager: npmBin,
 			}
 
 			return p.SaveToDisk()
@@ -308,4 +313,24 @@ func getLatestTagFromRepository(repository *git.Repository) (string, error) {
 	}
 
 	return latestTagName, nil
+}
+
+// findNpm returns "npm" if installed,
+// otherwise "pnpm" if installed,
+// otherwise "yarn" if installed
+// otherwise "".
+func findNpm() string {
+	npmBin, err := exec.LookPath("npm")
+	if err == nil && npmBin != "" {
+		return npmBin
+	}
+	npmBin, err = exec.LookPath("pnpm")
+	if err == nil && npmBin != "" {
+		return npmBin
+	}
+	npmBin, err = exec.LookPath("yarn")
+	if err == nil && npmBin != "" {
+		return npmBin
+	}
+	return ""
 }

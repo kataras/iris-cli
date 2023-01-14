@@ -39,6 +39,9 @@ type Project struct {
 	// Post installation.
 	// DisableInlineCommands disables source code comments stats with // $ _command_ to execute on "run" command.
 	DisableInlineCommands bool `json:"disable_inline_commands" yaml:"DisableInlineCommands" toml:"DisableInlineCommands"`
+	// NodePackageManager the node package manager to execute the npm commands.
+	// Defaults to "npm".
+	NodePackageManager string `json:"node_package_manager" yaml:"NodePackageManager" toml:"NodePackageManager"`
 	// DisableNpmInstall if `Run` and watch should NOT run npm install on first ran (and package.json changes).
 	// Defaults to false.
 	DisableNpmInstall bool `json:"disable_npm_install" yaml:"DisableNpmInstall" toml:"DisableNpmInstall"`
@@ -121,6 +124,10 @@ func (p *Project) setDefaults() {
 	}
 
 	p.frontEndRunningCommands = make(map[*exec.Cmd]context.CancelFunc) // make(chan context.CancelFunc, 20)
+
+	if p.NodePackageManager == "" {
+		p.NodePackageManager = "npm"
+	}
 }
 
 func (p *Project) SaveToDisk() error {
@@ -540,9 +547,11 @@ func (p *Project) build() error {
 		return nil
 	}
 
-	npmBin, err := exec.LookPath("npm")
+	npmBin, err := exec.LookPath(p.NodePackageManager)
 	if err != nil {
-		return fmt.Errorf("project <%s> requires nodejs to be installed", p.Name)
+		return fmt.Errorf(
+			"nodePackageManager in .iris.yml is set to %s, but %s could not be found",
+			p.NodePackageManager, p.NodePackageManager)
 	}
 
 	for _, f := range files {
