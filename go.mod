@@ -3,7 +3,7 @@ module github.com/kataras/iris-cli
 go 1.20
 
 require (
-	github.com/AlecAivazis/survey/v2 v2.3.6
+	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/cheggaaa/pb/v3 v3.1.2
 	github.com/creack/pty v1.1.18
 	github.com/denormal/go-gitignore v0.0.0-20180930084346-ae8ad1d07817
