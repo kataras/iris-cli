@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
-	github.com/cheggaaa/pb/v3 v3.1.2
+	github.com/cheggaaa/pb/v3 v3.1.4
 	github.com/creack/pty v1.1.18
 	github.com/denormal/go-gitignore v0.0.0-20180930084346-ae8ad1d07817
 	github.com/dustin/go-humanize v1.0.1
@@ -21,7 +21,7 @@ require (
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
-	github.com/fatih/color v1.14.1 // indirect
+	github.com/fatih/color v1.15.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.2.0 // indirect
@@ -32,8 +32,8 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
-	github.com/mattn/go-runewidth v0.0.12 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
