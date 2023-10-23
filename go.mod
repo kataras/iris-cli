@@ -8,7 +8,7 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/denormal/go-gitignore v0.0.0-20180930084346-ae8ad1d07817
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/kataras/golog v0.1.9
 	github.com/kataras/neffos v0.0.22
 	github.com/spf13/cobra v1.7.0
